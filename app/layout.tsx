@@ -19,6 +19,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="dark">
       <head>
+        <meta name="google-site-verification" content="q5GnYgfSLz8RBSXp5gg13u_GOBloxYaSi8gSLA3QhPs" />
         <script src="https://cdn.jsdelivr.net/npm/disable-devtool@latest"></script>
         <script
           dangerouslySetInnerHTML={{
