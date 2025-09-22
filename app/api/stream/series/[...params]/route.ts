@@ -1,7 +1,5 @@
 // app/api/stream/series/[...params]/route.ts
 import { NextResponse } from "next/server";
-import { doc, getDoc } from "firebase/firestore";
-import { firestore } from "@/lib/firebase";
 
 const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
@@ -14,10 +12,15 @@ export async function GET(
   const [tmdbId, season, episode] = params.params;
 
   if (!tmdbId || !season || !episode) {
-    return NextResponse.json({ error: "TMDB ID, temporada e episódio são necessários." }, { status: 400 });
+    return NextResponse.json(
+      { error: "TMDB ID, temporada e episódio são necessários." },
+      { status: 400 }
+    );
   }
 
   try {
+    // --- CORREÇÃO 1: Buscando dados da série no TMDB ---
+    // Adicionamos uma busca à API do TMDB para pegar o nome real e a imagem de fundo.
     let tvTitle: string | null = null;
     let originalTvTitle: string | null = null;
     let backdropPath: string | null = null;
@@ -31,51 +34,39 @@ export async function GET(
         backdropPath = tmdbData.backdrop_path;
       }
     } catch (tmdbError) {
-      console.warn("[API Séries] Falha ao buscar dados do TMDB.", tmdbError);
+      console.warn("API de Séries: Não foi possível buscar informações do TMDB para a série:", tmdbId, tmdbError);
     }
     
-    const cacheHeaders = { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=1800" };
-
-    // 1. Tenta buscar da Roxano
+    // Monta o link da roxanoplay.
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-    try {
-      const response = await fetch(roxanoUrl, { method: 'HEAD', signal: AbortSignal.timeout(4000) });
-      if (response.ok && Number(response.headers.get("Content-Length")) > 0) {
-        console.log(`[API Séries] Sucesso com Roxano para ${tmdbId} S${season}E${episode}`);
-        const roxanoStream = {
-          playerType: "custom",
-          url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
-          name: `Servidor Principal (T${season} E${episode})`,
-        };
-        return NextResponse.json({
-          streams: [roxanoStream], title: tvTitle, originalTitle: originalTvTitle, backdropPath: backdropPath,
-        }, { headers: cacheHeaders });
-      }
-    } catch (error) {
-      console.warn(`[API Séries] Roxano falhou para ${tmdbId} S${season}E${episode}. Tentando Firestore...`);
-    }
 
-    // 2. Fallback para o Firestore
-    const docRef = doc(firestore, "series", tmdbId, "seasons", season, "episodes", episode);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists() && docSnap.data()?.mp4Url) {
-      console.log(`[API Séries] Sucesso com Firestore para ${tmdbId} S${season}E${episode}`);
-      const firestoreStream = {
-        playerType: "default",
-        url: docSnap.data().mp4Url,
-        name: `Servidor Secundário (T${season} E${episode})`,
-      };
-      return NextResponse.json({
-        streams: [firestoreStream], title: tvTitle, originalTitle: originalTvTitle, backdropPath: backdropPath,
-      }, { headers: cacheHeaders });
-    }
+    const stream = {
+      playerType: "custom",
+      url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+      name: `Servidor Principal (T${season} E${episode})`,
+    };
 
-    // 3. Se nenhuma fonte funcionar
-    console.error(`[API Séries] Nenhuma fonte de stream encontrada para ${tmdbId} S${season}E${episode}`);
-    return NextResponse.json({ error: "Não foi possível obter o link de streaming." }, { status: 404 });
+    const cacheHeaders = {
+      "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=1800",
+    };
+    
+    // --- CORREÇÃO 2: Retornando os dados da série junto com o link ---
+    // Agora a resposta da API inclui o título e a imagem de fundo.
+    return NextResponse.json({
+      streams: [stream],
+      title: tvTitle, // Nome real da série
+      originalTitle: originalTvTitle,
+      backdropPath: backdropPath, // Imagem de fundo
+    }, { headers: cacheHeaders });
 
   } catch (error) {
-    console.error(`[API Séries] Erro crítico para ${tmdbId} S${season}E${episode}:`, error);
-    return NextResponse.json({ error: "Falha ao buscar streams." }, { status: 500 });
+    console.error(
+      `Erro ao buscar streams para a série ${tmdbId} S${season}E${episode}:`,
+      error
+    );
+    return NextResponse.json(
+      { error: "Falha ao buscar streams" },
+      { status: 500 }
+    );
   }
 }
