@@ -6,8 +6,8 @@ import { FavoritesProvider } from "@/components/favorites-context"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 
 export const metadata: Metadata = {
-  title: "PrimeVicio - Sua Plataforma de Filmes e Séries",
-  description: "Explore um universo de entretenimento com players rápidos e conteúdo atualizado.",
+  title: "PrimeVicio - API,EMBED DE FILMES E SÉRIES GRÁTIS",
+  description: "API DE EMBED COM FILMES E SÉRIES com players rápidos e conteúdo atualizado e Totalmente Gratuito.",
   icons: "https://i.ibb.co/xqMzw3J1/primevicioicon.png", // Ícone da aba do navegador adicionado aqui
 }
 
