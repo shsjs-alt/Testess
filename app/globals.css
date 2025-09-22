@@ -1,0 +1,127 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+:root {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 346.8 77.2% 49.8%;
+  --radius: 0.75rem;
+  --sb-thumb: rgba(255, 255, 255, 0.18);
+  --sb-thumb-hover: rgba(255, 255, 255, 0.28);
+  --sb-track: transparent;
+}
+
+.dark {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 346.8 77.2% 49.8%;
+}
+}
+
+@layer base {
+* {
+  @apply border-border;
+}
+body {
+  @apply bg-background text-foreground;
+  font-family: 'Poppins', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+}
+
+/* Clean, minimal scrollbar theme */
+@layer base {
+html, body {
+  scrollbar-width: thin;                    /* Firefox */
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+html::-webkit-scrollbar {
+  width: 10px;                              /* Vertical */
+  height: 10px;                             /* Horizontal */
+}
+html::-webkit-scrollbar-track {
+  background: var(--sb-track);
+}
+html::-webkit-scrollbar-thumb {
+  background-color: var(--sb-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;            /* Creates the "pill" with inner padding */
+  background-clip: padding-box;
+}
+html:hover::-webkit-scrollbar-thumb {
+  background-color: var(--sb-thumb-hover);
+}
+}
+
+/* Utility class for any scroll container */
+@layer utilities {
+.scrollbar-clean {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+.scrollbar-clean::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scrollbar-clean::-webkit-scrollbar-track {
+  background: var(--sb-track);
+}
+.scrollbar-clean::-webkit-scrollbar-thumb {
+  background-color: var(--sb-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.scrollbar-clean:hover::-webkit-scrollbar-thumb {
+  background-color: var(--sb-thumb-hover);
+}
+}
+/* app/globals.css */
+
+/* ... (seu código existente) ... */
+
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  }
+  .text-shadow-lg {
+    text-shadow: 0 2px 5px rgb(0 0 0 / 0.6);
+  }
+}
