@@ -7,18 +7,19 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import PaginationComponent from "@/components/PaginationComponent"
-import { firestore } from "@/lib/firebase"
-import { collection, onSnapshot } from "firebase/firestore"
 import { MediaCard, type MediaItem } from "@/components/media-card"
 
 // --- CONSTANTES ---
 const API_KEY = "860b66ade580bacae581f4228fad49fc";
 const API_BASE_URL = "https://api.themoviedb.org/3";
 
-type Stats = { movies: number; series: number; episodes: number; }
+// --- MUDANÇA ---
+// Definimos o tipo para as estatísticas
+type Stats = { movies: number; series: number; episodes: number; };
 
-function ApiDocsSection({ stats, loadingStats }: { stats: Stats | null, loadingStats: boolean }) {
+function ApiDocsSection({ stats }: { stats: Stats }) {
     const [showDocs, setShowDocs] = useState(false);
+    // Função para formatar números grandes (ex: 22000 vira "22.000")
     const formatNumber = (num: number) => new Intl.NumberFormat('pt-BR').format(num);
 
     return (
@@ -26,7 +27,6 @@ function ApiDocsSection({ stats, loadingStats }: { stats: Stats | null, loadingS
             <AnimatePresence mode="wait">
                 { showDocs ? (
                     <motion.div key="docs" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-                        {/* A seção de documentação pode ser adicionada aqui no futuro */}
                         <div className="text-center">
                             <h2 className="text-2xl font-bold">Documentação da API</h2>
                             <p className="text-zinc-400">Em breve...</p>
@@ -42,17 +42,11 @@ function ApiDocsSection({ stats, loadingStats }: { stats: Stats | null, loadingS
                                 <Button size="lg" onClick={() => setShowDocs(true)} className="bg-white text-black hover:bg-zinc-200">Aprenda como usar</Button>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                {loadingStats ? (
-                                    <div className="col-span-2 flex justify-center items-center h-24">
-                                        <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
-                                    </div>
-                                ) : (
-                                    <>
-                                        <Card className="bg-zinc-900/80 border-zinc-800 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats?.movies || 0)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Filmes</p></CardContent></Card>
-                                        <Card className="bg-zinc-900/80 border-zinc-800 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats?.series || 0)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Séries</p></CardContent></Card>
-                                        <Card className="bg-zinc-900/80 border-zinc-800 col-span-2 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats?.episodes || 0)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Episódios</p></CardContent></Card>
-                                    </>
-                                )}
+                                {/* --- MUDANÇA --- */}
+                                {/* Os números agora são puxados diretamente do estado com os valores que você pediu */}
+                                <Card className="bg-zinc-900/80 border-zinc-800 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats.movies)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Filmes</p></CardContent></Card>
+                                <Card className="bg-zinc-900/80 border-zinc-800 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats.series)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Séries</p></CardContent></Card>
+                                <Card className="bg-zinc-900/80 border-zinc-800 col-span-2 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats.episodes)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Episódios</p></CardContent></Card>
                             </div>
                         </div>
                     </motion.div>
@@ -66,60 +60,19 @@ export default function HomePage() {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [heroBackdrop, setHeroBackdrop] = useState<string | null>(null);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loadingStats, setLoadingStats] = useState(true);
+  
+  // --- MUDANÇA PRINCIPAL ---
+  // Removemos a busca de estatísticas do Firebase e colocamos os valores fixos que você solicitou.
+  const [stats] = useState<Stats>({
+      movies: 22000,
+      series: 6000,
+      episodes: 240000,
+  });
   
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
 
-  // Efeito para buscar estatísticas do Firestore com contagem correta
-  useEffect(() => {
-    const mediaCollection = collection(firestore, "media");
-    
-    const unsubscribe = onSnapshot(mediaCollection, (snapshot) => {
-        let moviesCount = 0;
-        let seriesCount = 0;
-        let episodesCount = 0;
-
-        snapshot.docs.forEach(doc => {
-            const data = doc.data();
-            
-            // Verifica se o item tem um link de streaming válido
-            const hasValidStreamLink = (urls: any) => 
-                Array.isArray(urls) && urls.some(u => u && typeof u.url === 'string' && u.url.includes("short.icu"));
-
-            if (data.type === 'movie') {
-                if (hasValidStreamLink(data.urls)) {
-                    moviesCount++;
-                }
-            } else if (data.type === 'series' || data.type === 'tv') {
-                let hasAnyEpisode = false;
-                if (data.seasons && typeof data.seasons === 'object') {
-                    Object.values(data.seasons).forEach((season: any) => {
-                        if (season && Array.isArray(season.episodes)) {
-                            season.episodes.forEach((episode: any) => {
-                                if (hasValidStreamLink(episode.urls)) {
-                                    episodesCount++;
-                                    hasAnyEpisode = true; // Marca que esta série tem pelo menos um episódio válido
-                                }
-                            });
-                        }
-                    });
-                }
-                if (hasAnyEpisode) {
-                    seriesCount++;
-                }
-            }
-        });
-
-        setStats({ movies: moviesCount, series: seriesCount, episodes: episodesCount });
-        setLoadingStats(false);
-    });
-    
-    return () => unsubscribe();
-  }, []);
-
-  // Função para buscar mídia popular do TMDB
+  // O resto do código permanece o mesmo, pois ele busca os filmes populares do TMDB, o que está correto.
   const fetchMedia = useCallback(async (page: number) => {
     setLoading(true);
     try {
@@ -164,7 +117,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent" />
       </section>
 
-      <ApiDocsSection stats={stats} loadingStats={loadingStats} />
+      <ApiDocsSection stats={stats} />
 
       <main className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-20">
         <AnimatePresence mode="wait">

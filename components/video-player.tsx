@@ -1,0 +1,709 @@
+"use client"
+
+import { useState, useRef, useEffect, useCallback } from "react"
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, FastForward, Rewind, Settings, PictureInPicture, X, Download } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
+
+type VideoPlayerProps = {
+  src: string
+  title: string
+  downloadUrl?: string
+  onClose?: () => void
+  rememberPositionKey?: string
+  rememberPosition?: boolean
+}
+
+export default function VideoPlayer({
+  src,
+  title,
+  downloadUrl,
+  onClose,
+  rememberPositionKey,
+  rememberPosition = true,
+}: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const progressWrapRef = useRef<HTMLDivElement>(null)
+
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [bufferedEnd, setBufferedEnd] = useState(0)
+  const [volume, setVolume] = useState(1)
+  const [isMuted, setIsMuted] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showControls, setShowControls] = useState(true)
+  const [playbackRate, setPlaybackRate] = useState(1)
+  const [pipSupported, setPipSupported] = useState(false)
+  const [isPipActive, setIsPipActive] = useState(false)
+  const [showLogo, setShowLogo] = useState(false)
+
+  // UI helpers
+  const [hoverTime, setHoverTime] = useState<number | null>(null)
+  const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
+  const [showSpeedHint, setShowSpeedHint] = useState(false)
+
+  // Keys for storage
+  const volumeKey = "video-player-volume"
+  const positionKey = `video-pos:${rememberPositionKey || src}`
+
+  // Refs para novas funcionalidades
+  const lastTapRef = useRef<number>(0)
+  const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const originalRateRef = useRef<number>(1)
+  const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
+  const isSpeedingUpRef = useRef(false);
+
+  // Restore volume and optionally last position
+  useEffect(() => {
+    try {
+      const savedVolume = localStorage.getItem(volumeKey)
+      if (savedVolume) {
+        const v = Number.parseFloat(savedVolume)
+        setVolume(v)
+        if (videoRef.current) videoRef.current.volume = v
+      }
+      if (rememberPosition) {
+        const savedPos = localStorage.getItem(positionKey)
+        if (savedPos && videoRef.current) {
+          const n = Number.parseFloat(savedPos)
+          if (!Number.isNaN(n) && n > 0) {
+            videoRef.current.currentTime = n
+            setCurrentTime(n)
+          }
+        }
+      }
+    } catch (e) {
+      // no-op
+    }
+  }, [positionKey, rememberPosition])
+
+  // Save position periodically
+  useEffect(() => {
+    if (!rememberPosition) return
+    const id = setInterval(() => {
+      try {
+        if (videoRef.current) {
+          localStorage.setItem(positionKey, String(videoRef.current.currentTime || 0))
+        }
+      } catch (e) {
+        // no-op
+      }
+    }, 1500)
+    return () => clearInterval(id)
+  }, [positionKey, rememberPosition])
+
+  // PIP support
+  useEffect(() => {
+    setPipSupported(typeof document !== "undefined" && "pictureInPictureEnabled" in document)
+  }, [])
+
+  // Auto-hide controls
+  useEffect(() => {
+    let timeout: NodeJS.Timeout
+    const container = containerRef.current
+    const reset = () => {
+      clearTimeout(timeout)
+      setShowControls(true)
+      if (isPlaying) timeout = setTimeout(() => setShowControls(false), 2500)
+    }
+    const onMove = () => reset()
+    const onLeave = () => {
+      clearTimeout(timeout)
+      if (isPlaying) setShowControls(false)
+    }
+    if (container) {
+      container.addEventListener("mousemove", onMove)
+      container.addEventListener("mouseleave", onLeave)
+      container.addEventListener("touchstart", onMove, { passive: true } as any)
+    }
+    reset()
+    return () => {
+      clearTimeout(timeout)
+      if (container) {
+        container.removeEventListener("mousemove", onMove)
+        container.removeEventListener("mouseleave", onLeave)
+        container.removeEventListener("touchstart", onMove as any)
+      }
+    }
+  }, [isPlaying])
+
+  // Video events
+  const handleLoadStart = () => {
+    setIsLoading(true)
+    setError(null)
+  }
+  const handleCanPlay = () => setIsLoading(false)
+  const handleError = () => {
+    setIsLoading(false)
+    setError("Não foi possível carregar o vídeo.")
+  }
+  const handleTimeUpdate = () => {
+    if (!videoRef.current) return
+    const newCurrentTime = videoRef.current.currentTime;
+    setCurrentTime(newCurrentTime)
+
+    // Lógica para mostrar a logo
+    if (!showLogo && newCurrentTime > 10) {
+        setShowLogo(true)
+    }
+
+    // Update buffered end
+    try {
+      const buf = videoRef.current.buffered
+      if (buf && buf.length > 0) {
+        const end = buf.end(buf.length - 1)
+        setBufferedEnd(end)
+      }
+    } catch {
+      // ignore
+    }
+  }
+  const handleLoadedMetadata = () => {
+    if (!videoRef.current) return
+    setDuration(videoRef.current.duration || 0)
+  }
+
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (v.paused) {
+      v.play().catch(() => handleError())
+    } else {
+      v.pause()
+    }
+    setIsPlaying(!v.paused)
+  }, [])
+
+  const seek = useCallback((amount: number) => {
+    const v = videoRef.current
+    if (!v) return
+    v.currentTime = Math.min(Math.max(0, v.currentTime + amount), duration || v.duration || 0)
+    setShowSeekHint({ dir: amount > 0 ? "fwd" : "back", by: Math.abs(amount) })
+    setTimeout(() => setShowSeekHint(null), 700)
+  }, [duration])
+
+  const handleSeekSlider = (value: number[]) => {
+    const v = videoRef.current
+    if (!v) return
+    v.currentTime = value[0]
+    setCurrentTime(value[0])
+  }
+
+  const toggleMute = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    const newMuted = !v.muted
+    v.muted = newMuted
+    setIsMuted(newMuted)
+    if (!newMuted && v.volume === 0) {
+      v.volume = 0.5
+      setVolume(0.5)
+    }
+  }, [])
+
+  const handleVolumeChange = (value: number[]) => {
+    const v = videoRef.current
+    if (!v) return
+    const newVolume = value[0]
+    v.volume = newVolume
+    setVolume(newVolume)
+    setIsMuted(newVolume === 0)
+    try {
+      localStorage.setItem(volumeKey, String(newVolume))
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement)
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch((err) => console.error(err))
+    } else {
+      document.exitFullscreen()
+    }
+  }, [])
+  useEffect(() => {
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
+  }, [])
+
+  const changePlaybackRate = (rate: number) => {
+    if (!videoRef.current) return
+    videoRef.current.playbackRate = rate
+    setPlaybackRate(rate)
+  }
+
+  const togglePip = useCallback(async () => {
+    const v = videoRef.current
+    if (!v || !document.pictureInPictureEnabled) return
+    try {
+      if (document.pictureInPictureElement) {
+        await (document as any).exitPictureInPicture()
+      } else {
+        await (v as any).requestPictureInPicture()
+      }
+    } catch (e) {
+      console.error("PIP error", e)
+    }
+  }, [])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    const onEnterPip = () => setIsPipActive(true)
+    const onLeavePip = () => setIsPipActive(false)
+    v.addEventListener("enterpictureinpicture", onEnterPip as any)
+    v.addEventListener("leavepictureinpicture", onLeavePip as any)
+    return () => {
+      v.removeEventListener("enterpictureinpicture", onEnterPip as any)
+      v.removeEventListener("leavepictureinpicture", onLeavePip as any)
+    }
+  }, [])
+
+  const formatTime = (time: number) => {
+    if (!Number.isFinite(time)) return "00:00"
+    const hours = Math.floor(time / 3600)
+    const minutes = Math.floor((time % 3600) / 60)
+    const seconds = Math.floor(time % 60)
+    const mm = String(minutes).padStart(2, "0")
+    const ss = String(seconds).padStart(2, "0")
+    return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
+  }
+
+  const retry = () => {
+    if (videoRef.current) videoRef.current.load()
+  }
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return
+      
+      // Lógica para segurar a barra de espaço
+      if (e.key === ' ' && !e.repeat) {
+          e.preventDefault()
+          if (!isPlaying || isSpeedingUpRef.current) return
+          
+          spacebarDownTimer.current = setTimeout(() => {
+            if (videoRef.current && isPlaying) {
+                isSpeedingUpRef.current = true;
+                originalRateRef.current = videoRef.current.playbackRate;
+                videoRef.current.playbackRate = 2.0;
+                setPlaybackRate(2.0);
+                setShowSpeedHint(true);
+            }
+          }, 200);
+      }
+
+      switch (e.key.toLowerCase()) {
+        case "k":
+          e.preventDefault()
+          togglePlay()
+          break
+        case "f":
+          toggleFullscreen()
+          break
+        case "m":
+          toggleMute()
+          break
+        case "p":
+          togglePip()
+          break
+        case "arrowright":
+          seek(10)
+          break
+        case "arrowleft":
+          seek(-10)
+          break
+        case "arrowup":
+          e.preventDefault()
+          handleVolumeChange([Math.min(1, volume + 0.1)])
+          break
+        case "arrowdown":
+          e.preventDefault()
+          handleVolumeChange([Math.max(0, volume - 0.1)])
+          break
+      }
+    }
+    
+    const onKeyUp = (e: KeyboardEvent) => {
+        if (e.key === ' ') {
+            e.preventDefault()
+            if (spacebarDownTimer.current) {
+                clearTimeout(spacebarDownTimer.current);
+                spacebarDownTimer.current = null;
+                if (!isSpeedingUpRef.current) {
+                    togglePlay(); // É um toque rápido
+                }
+            }
+            if (isSpeedingUpRef.current) {
+                if (videoRef.current) {
+                    videoRef.current.playbackRate = originalRateRef.current;
+                }
+                setPlaybackRate(originalRateRef.current);
+                setShowSpeedHint(false);
+                isSpeedingUpRef.current = false;
+            }
+        }
+    };
+
+    window.addEventListener("keydown", onKeyDown)
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+        window.removeEventListener("keydown", onKeyDown)
+        window.removeEventListener("keyup", onKeyUp);
+        if (spacebarDownTimer.current) clearTimeout(spacebarDownTimer.current);
+    }
+  }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
+
+  // Hover time preview
+  const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!duration) return
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
+    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+    setHoverTime(duration * pct)
+  }
+  const onProgressLeave = () => setHoverTime(null)
+
+  // Mobile double-tap zones for quick seek
+  const onMobileTap = (dir: "left" | "right") => {
+    const now = Date.now()
+    if (now - lastTapRef.current < 320) {
+      seek(dir === "left" ? -10 : 10)
+    } else {
+      // single tap toggles controls
+      setShowControls((s) => !s)
+    }
+    lastTapRef.current = now
+  }
+  
+  // Mobile hold to speed up
+  const handleTouchStart = () => {
+    holdTimeoutRef.current = setTimeout(() => {
+      if (videoRef.current && isPlaying) {
+        originalRateRef.current = videoRef.current.playbackRate
+        videoRef.current.playbackRate = 2
+        setShowSpeedHint(true)
+      }
+    }, 500) // Meio segundo de espera
+  }
+  
+  const handleTouchEnd = () => {
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current)
+      holdTimeoutRef.current = null
+    }
+    if (videoRef.current && videoRef.current.playbackRate === 2) {
+      videoRef.current.playbackRate = originalRateRef.current
+      setShowSpeedHint(false)
+    }
+  }
+
+  const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+  const hoverLeft =
+    hoverTime !== null && duration > 0 && progressWrapRef.current
+      ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
+      : 0
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <div
+        ref={containerRef}
+        className={cn(
+          "relative w-full aspect-video bg-black rounded-xl overflow-hidden group select-none", // Adicionado select-none
+          isPlaying && !showControls && "cursor-none"
+        )}
+        onDoubleClick={toggleFullscreen}
+      >
+        <video
+          ref={videoRef}
+          src={src}
+          className="h-full w-full object-contain"
+          onLoadStart={handleLoadStart}
+          onCanPlay={handleCanPlay}
+          onError={handleError}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          preload="metadata"
+        />
+
+        <AnimatePresence>
+            {showLogo && (
+                <motion.img
+                    src="https://i.ibb.co/s91tyczd/Gemini-Generated-Image-ejjiocejjiocejji-1.png"
+                    alt="Logo"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className="absolute bottom-0 left-0 h-8 w-auto z-20 pointer-events-none select-none" // Adicionado select-none
+                />
+            )}
+        </AnimatePresence>
+
+
+        {/* Loading */}
+        {isLoading && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80">
+            <div className="text-center text-white">
+              <p className="mb-4 text-sm text-zinc-200">{error}</p>
+              <div className="flex items-center justify-center gap-2">
+                <Button onClick={retry} variant="secondary" className="h-9">
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Tentar novamente
+                </Button>
+                {onClose && (
+                  <Button onClick={onClose} variant="outline" className="h-9">
+                    Fechar
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Center big play when paused */}
+        {!isLoading && !error && !isPlaying && (
+          <button
+            aria-label="Reproduzir"
+            onClick={togglePlay}
+            className={cn(
+              "absolute z-10 inset-0 m-auto h-16 w-16 rounded-full",
+              "bg-white/10 text-white ring-1 ring-white/20 backdrop-blur",
+              "flex items-center justify-center hover:bg-white/20 transition-colors",
+            )}
+            style={{ height: 64, width: 64 }}
+          >
+            <Play className="h-7 w-7" />
+          </button>
+        )}
+
+        {/* Seek hint */}
+        {showSeekHint && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <div className="rounded-full bg-black/60 px-3 py-1 text-sm text-white ring-1 ring-white/10">
+              {showSeekHint.dir === "fwd" ? "+10s" : "-10s"}
+            </div>
+          </div>
+        )}
+        
+        {/* Speed hint */}
+        <AnimatePresence>
+            {showSpeedHint && (
+                 <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+                 >
+                    <div className="rounded-full bg-black/60 px-4 py-2 text-lg font-bold text-white ring-1 ring-white/10">
+                        2x
+                    </div>
+                 </motion.div>
+            )}
+        </AnimatePresence>
+
+        {/* Mobile tap zones */}
+        <div className="absolute inset-0 z-0 md:hidden">
+          <div className="absolute left-0 top-0 h-full w-1/2" onClick={() => onMobileTap("left")} />
+          <div className="absolute right-0 top-0 h-full w-1/2" onClick={() => onMobileTap("right")} />
+        </div>
+
+        {/* Controls */}
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3 md:p-4 transition-opacity duration-300",
+            "bg-gradient-to-t from-black/80 via-black/20 to-transparent",
+            showControls ? "opacity-100" : "opacity-0",
+          )}
+        >
+          {/* Progress */}
+          <div
+            ref={progressWrapRef}
+            className="pointer-events-auto relative mb-2"
+            onMouseMove={onProgressMouseMove}
+            onMouseLeave={onProgressLeave}
+          >
+            {/* buffered track */}
+            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-white/10" />
+            <div
+              className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded bg-white/20"
+              style={{
+                width: duration > 0 ? `${(Math.min(bufferedEnd, duration) / duration) * 100}%` : "0%",
+              }}
+            />
+            {/* slider */}
+            <Slider
+              value={[Math.min(currentTime, duration || 0)]}
+              max={duration || 100}
+              step={1}
+              onValueChange={handleSeekSlider}
+              className="relative h-1"
+            />
+            {/* time row */}
+            <div className="mt-1.5 flex select-none justify-between text-[11px] text-white/80">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+
+            {hoverTime !== null && duration > 0 && (
+              <div
+                className="pointer-events-none absolute -top-7 hidden md:block translate-x-[-50%] rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white ring-1 ring-white/10"
+                style={{ left: hoverLeft }}
+              >
+                {formatTime(hoverTime)}
+              </div>
+            )}
+          </div>
+
+          {/* Buttons */}
+          <div className="pointer-events-auto flex items-center justify-between">
+            {/* Left group */}
+            <div className="flex items-center gap-1 md:gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                    {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isPlaying ? "Pausar (K)" : "Reproduzir (K)"}</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={() => seek(-10)} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                    <Rewind className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>-10s (←)</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={() => seek(10)} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                    <FastForward className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>+10s (→)</TooltipContent>
+              </Tooltip>
+
+              <div className="flex items-center gap-2 group/vol">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                      {isMuted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Mudo (M)</TooltipContent>
+                </Tooltip>
+                <div className="w-0 overflow-hidden transition-all duration-300 group-hover/vol:w-24 md:w-0 md:group-hover/vol:w-24">
+                  <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
+                </div>
+              </div>
+            </div>
+
+            {/* Title (desktop) */}
+            <div className="pointer-events-none absolute left-1/2 hidden max-w-[40vw] -translate-x-1/2 truncate text-sm text-white/80 md:block">
+              {title}
+            </div>
+
+            {/* Right group */}
+            <div className="flex items-center gap-1 md:gap-2">
+              {downloadUrl && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                        <Download className="h-5 w-5" />
+                      </Button>
+                    </a>
+                  </TooltipTrigger>
+                  <TooltipContent>Baixar</TooltipContent>
+                </Tooltip>
+              )}
+              <Popover>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                        <Settings className="h-5 w-5" />
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Velocidade</TooltipContent>
+                </Tooltip>
+                <PopoverContent className="w-40 border-zinc-700 bg-black/80 p-2 text-white backdrop-blur">
+                  <div className="mb-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
+                  <div className="flex flex-col gap-1">
+                    {playbackRates.map((r) => (
+                      <Button
+                        key={r}
+                        variant={playbackRate === r ? "secondary" : "ghost"}
+                        className="h-8 w-full justify-start"
+                        onClick={() => changePlaybackRate(r)}
+                      >
+                        {r === 1 ? "Normal" : `${r}x`}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {pipSupported && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                      <PictureInPicture className={cn("h-5 w-5", isPipActive && "text-red-400")} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Picture-in-Picture (P)</TooltipContent>
+                </Tooltip>
+              )}
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                    {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Tela cheia (F)</TooltipContent>
+              </Tooltip>
+
+              {onClose && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Fechar</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </TooltipProvider>
+  )
+}

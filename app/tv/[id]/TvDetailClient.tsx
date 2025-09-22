@@ -2,8 +2,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
-import { Loader2, Star, Calendar, Tv, Heart, PlayCircle, X } from 'lucide-react'
+import { Loader2, Star, Calendar, Tv, Heart, PlayCircle } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useFavorites, type FavoriteItem } from "@/components/favorites-context"
@@ -15,7 +14,6 @@ const API_BASE_URL = "https://api.themoviedb.org/3";
 
 type TVDetails = { id: number; name: string; overview: string; poster_path: string | null; backdrop_path: string | null; first_air_date: string; vote_average: number; number_of_seasons: number; seasons: { id: number; name: string; season_number: number; episode_count: number }[]; };
 type Episode = { id: number; name: string; episode_number: number; overview: string; still_path: string | null; };
-type Stream = { url: string; name: string; playerType: 'abyss'; };
 
 export default function TvDetailClient({ id }: { id: string }) {
   const [tv, setTv] = useState<TVDetails | null>(null);
@@ -26,12 +24,6 @@ export default function TvDetailClient({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const { toggle, isFavorite } = useFavorites();
 
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
-  const [selectedEpisodeStreams, setSelectedEpisodeStreams] = useState<Stream[]>([]);
-  const [selectedEpisodeForModal, setSelectedEpisodeForModal] = useState<Episode | null>(null);
-  const [streamLoading, setStreamLoading] = useState(false);
-
-
   const handleScrollToEpisodes = () => {
     const element = document.getElementById('episodios-section');
     if (element) {
@@ -39,33 +31,12 @@ export default function TvDetailClient({ id }: { id: string }) {
     }
   };
 
-    const handleEpisodeClick = async (episode: Episode) => {
+  const handleEpisodeClick = (episode: Episode) => {
     if (!tv) return;
-    setStreamLoading(true);
-    try {
-      const res = await fetch(`/api/stream/series/${id}/${selectedSeason}/${episode.episode_number}`);
-      if (!res.ok) throw new Error("Falha ao buscar os servidores do episódio.");
-      const data = await res.json();
-      
-      if (data.streams && data.streams.length > 0) {
-        const episodeTitle = `${tv.name} - T${selectedSeason} E${episode.episode_number}`;
-        const embedUrl = `/embed/tv/${id}/${selectedSeason}/${episode.episode_number}?url=${encodeURIComponent(data.streams[0].url)}&title=${encodeURIComponent(episodeTitle)}&backdrop_path=${tv.backdrop_path || ''}`;
-
-        if (data.streams.length === 1) {
-          window.open(embedUrl, '_blank');
-        } else {
-          setSelectedEpisodeStreams(data.streams);
-          setSelectedEpisodeForModal(episode);
-          setIsServerModalOpen(true);
-        }
-      } else {
-         alert("Nenhum servidor encontrado para este episódio.");
-      }
-    } catch (err: any) {
-       alert(err?.message || "Erro ao buscar servidores.");
-    } finally {
-      setStreamLoading(false);
-    }
+    // --- CORREÇÃO PRINCIPAL ---
+    // Apenas abre a URL de embed limpa, sem nenhum parâmetro.
+    const embedUrl = `/embed/tv/${id}/${selectedSeason}/${episode.episode_number}`;
+    window.open(embedUrl, '_blank');
   };
 
   useEffect(() => {
@@ -120,7 +91,6 @@ export default function TvDetailClient({ id }: { id: string }) {
   const seasonsWithEpisodes = tv.seasons.filter((s) => s.season_number > 0 && s.episode_count > 0);
 
   return (
-    <>
     <div className="bg-zinc-950 min-h-screen text-white">
         <div 
             className="relative w-full h-[56.25vw] max-h-[80vh] bg-cover bg-center"
@@ -173,8 +143,7 @@ export default function TvDetailClient({ id }: { id: string }) {
                                 <button
                                     key={ep.id}
                                     onClick={() => handleEpisodeClick(ep)}
-                                    disabled={streamLoading}
-                                    className="w-full text-left p-2.5 rounded-lg flex items-center gap-4 transition-colors bg-zinc-900 hover:bg-zinc-800/70 group disabled:opacity-50 disabled:cursor-wait"
+                                    className="w-full text-left p-2.5 rounded-lg flex items-center gap-4 transition-colors bg-zinc-900 hover:bg-zinc-800/70 group"
                                 >
                                     <span className="text-zinc-400 font-mono text-lg">{String(ep.episode_number).padStart(2, "0")}</span>
                                     <div className="relative w-28 shrink-0">
@@ -187,9 +156,9 @@ export default function TvDetailClient({ id }: { id: string }) {
                                         <p className="font-semibold text-sm line-clamp-1">{ep.name}</p>
                                         <p className="text-xs text-zinc-400 line-clamp-2">{ep.overview || "Sem descrição."}</p>
                                     </div>
-                                    <Button variant="ghost" size="sm" className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {streamLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assistir'}
-                                    </Button>
+                                    <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button variant="ghost" size="sm">Assistir</Button>
+                                    </div>
                                 </button>
                             ))
                         ) : (
@@ -202,54 +171,5 @@ export default function TvDetailClient({ id }: { id: string }) {
             </div>
         </main>
     </div>
-    {isServerModalOpen && selectedEpisodeForModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setIsServerModalOpen(false)}>
-            <div
-                className="absolute inset-0 bg-cover bg-center transition-opacity duration-500"
-                style={{ backgroundImage: `url(https://image.tmdb.org/t/p/original/${tv.backdrop_path})` }}
-            />
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-            <div
-                className="relative bg-[#18181B] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden ring-1 ring-white/10"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="p-6 md:p-8">
-                    <div className="flex justify-between items-start mb-6">
-                        <div>
-                            <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Selecione um Servidor</h2>
-                             <p className="text-zinc-400 text-sm mt-1">{`Episódio ${selectedEpisodeForModal.episode_number}: ${selectedEpisodeForModal.name}`}</p>
-                        </div>
-                        <Button variant="ghost" size="icon" onClick={() => setIsServerModalOpen(false)} className="-mr-2 -mt-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-full">
-                            <X size={24} />
-                        </Button>
-                    </div>
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-3 -mr-3 scrollbar-clean">
-                        {selectedEpisodeStreams.map((stream, index) => {
-                          const episodeTitle = `${tv.name} - T${selectedSeason} E${selectedEpisodeForModal.episode_number}`;
-                          const embedUrl = `/embed/tv/${id}/${selectedSeason}/${selectedEpisodeForModal.episode_number}?url=${encodeURIComponent(stream.url)}&title=${encodeURIComponent(episodeTitle)}&backdrop_path=${tv.backdrop_path || ''}`;
-                          return (
-                            <a
-                                href={embedUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                key={index}
-                                className="block w-full text-left p-4 rounded-lg transition-colors bg-zinc-800 hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                            >
-                                <p className="font-semibold text-white">{stream.name || `Servidor ${index + 1}`}</p>
-                                <p className="text-sm text-zinc-400">{stream.playerType === 'abyss' ? 'Principal' : 'Alternativo'}</p>
-                            </a>
-                          )
-                        })}
-                    </div>
-                     <div className="mt-6 text-center">
-                        <Button variant="outline" onClick={() => setIsServerModalOpen(false)} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
-                            Fechar
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-    </>
   )
 }

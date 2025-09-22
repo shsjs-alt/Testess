@@ -2,9 +2,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
 import { motion } from "framer-motion"
-import { Star, Calendar, Clock, PlayCircle, Heart, X } from 'lucide-react'
+import { Star, Calendar, Clock, PlayCircle, Heart } from 'lucide-react'
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useFavorites, type FavoriteItem } from "@/components/favorites-context"
 import { cn } from "@/lib/utils"
@@ -14,12 +13,11 @@ const API_KEY = "860b66ade580bacae581f4228fad49fc"
 const API_BASE_URL = "https://api.themoviedb.org/3";
 
 type MovieDetails = { id: number; title: string; overview: string; poster_path: string | null; backdrop_path: string | null; release_date: string; vote_average: number; runtime: number; };
-type Stream = { url: string; name: string; playerType: 'abyss'; };
+type Stream = { url: string; };
 
 export default function MovieDetailClient({ id }: { id: string }) {
   const [movie, setMovie] = useState<MovieDetails | null>(null);
-  const [streams, setStreams] = useState<Stream[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hasStream, setHasStream] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toggle, isFavorite } = useFavorites();
@@ -31,16 +29,20 @@ export default function MovieDetailClient({ id }: { id: string }) {
         setLoading(true);
         setError(null);
         
-        const res = await fetch(`${API_BASE_URL}/movie/${id}?api_key=${API_KEY}&language=pt-BR`);
-        if (!res.ok) throw new Error("Falha ao buscar os detalhes do filme.");
-        const data = await res.json();
-        setMovie(data);
+        // Busca os detalhes e o stream em paralelo para agilizar
+        const moviePromise = fetch(`${API_BASE_URL}/movie/${id}?api_key=${API_KEY}&language=pt-BR`);
+        const streamPromise = fetch(`/api/stream/movies/${id}`);
 
-        const streamRes = await fetch(`/api/stream/movies/${id}`);
+        const [movieRes, streamRes] = await Promise.all([moviePromise, streamPromise]);
+
+        if (!movieRes.ok) throw new Error("Falha ao buscar os detalhes do filme.");
+        const movieData = await movieRes.json();
+        setMovie(movieData);
+
         if(streamRes.ok) {
             const streamData = await streamRes.json();
             if(streamData.streams && streamData.streams.length > 0) {
-                setStreams(streamData.streams);
+                setHasStream(true);
             }
         }
       } catch (e: any) {
@@ -53,12 +55,11 @@ export default function MovieDetailClient({ id }: { id: string }) {
   }, [id]);
 
   const handleWatchClick = () => {
-    if (streams.length === 1 && movie) {
-      const embedUrl = `/embed/movie/${id}?url=${encodeURIComponent(streams[0].url)}&title=${encodeURIComponent(movie.title)}&backdrop_path=${movie.backdrop_path || ''}`;
-      window.open(embedUrl, '_blank');
-    } else {
-      setIsModalOpen(true);
-    }
+    // --- CORREÇÃO PRINCIPAL ---
+    // Agora, simplesmente abrimos a página de embed com a URL limpa.
+    // A página /embed/movie/[id] vai se encarregar de buscar os dados e mostrar o seletor.
+    const embedUrl = `/embed/movie/${id}`;
+    window.open(embedUrl, '_blank');
   };
 
   const formatRuntime = (minutes: number) => { const h = Math.floor(minutes / 60); const m = minutes % 60; return `${h}h ${m}m`; };
@@ -71,7 +72,6 @@ export default function MovieDetailClient({ id }: { id: string }) {
   const fav = isFavorite(movie.id, "movie");
 
   return (
-    <>
       <div className="min-h-screen bg-zinc-950 text-zinc-50">
         <div className="relative h-[56vh] md:h-[68vh] w-full overflow-hidden">
           {movie.backdrop_path && ( <motion.div initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1.2, ease: "easeOut" }} className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(https://image.tmdb.org/t/p/original/${movie.backdrop_path})` }}/> )}
@@ -91,7 +91,7 @@ export default function MovieDetailClient({ id }: { id: string }) {
                     <span className="inline-flex items-center gap-2 rounded-full bg-yellow-400/10 px-3 py-1 text-sm ring-1 ring-yellow-400/20 text-yellow-200"><Star className="h-4 w-4 fill-current" />{movie.vote_average.toFixed(1)}</span>
                 </div>
                 <div className="mt-6 flex flex-wrap gap-3">
-                    {streams.length > 0 ? (
+                    {hasStream ? (
                       <Button onClick={handleWatchClick} className={cn(buttonVariants({ size: "default" }), "bg-red-600 text-white hover:bg-red-600/90")}>
                           <PlayCircle className="mr-2 h-5 w-5" />Assistir Agora
                       </Button>
@@ -107,48 +107,6 @@ export default function MovieDetailClient({ id }: { id: string }) {
           </section>
         </main>
       </div>
-      
-      {isModalOpen && movie && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
-            <div
-                className="absolute inset-0 bg-cover bg-center transition-opacity duration-500"
-                style={{ backgroundImage: `url(https://image.tmdb.org/t/p/original/${movie.backdrop_path})` }}
-            />
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-            <div
-                className="relative bg-[#18181B] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden ring-1 ring-white/10"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="p-6 md:p-8">
-                    <div className="flex justify-between items-start mb-6">
-                        <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Selecione um Servidor</h2>
-                        <Button variant="ghost" size="icon" onClick={() => setIsModalOpen(false)} className="-mr-2 -mt-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-full">
-                            <X size={24} />
-                        </Button>
-                    </div>
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-3 -mr-3 scrollbar-clean">
-                        {streams.map((stream, index) => (
-                            <a
-                                href={`/embed/movie/${id}?url=${encodeURIComponent(stream.url)}&title=${encodeURIComponent(movie.title)}&backdrop_path=${movie.backdrop_path || ''}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                key={index}
-                                className="block w-full text-left p-4 rounded-lg transition-colors bg-zinc-800 hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                            >
-                                <p className="font-semibold text-white">{stream.name || `Servidor ${index + 1}`}</p>
-                                <p className="text-sm text-zinc-400">{stream.playerType === 'abyss' ? 'Principal' : 'Alternativo'}</p>
-                            </a>
-                        ))}
-                    </div>
-                     <div className="mt-6 text-center">
-                        <Button variant="outline" onClick={() => setIsModalOpen(false)} className="border-white/20 bg-white/5 text-white hover:bg-white/10">
-                            Fechar
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
     </>
   );
 }

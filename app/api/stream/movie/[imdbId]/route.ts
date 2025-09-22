@@ -1,76 +1,91 @@
-// app/api/stream/movies/[tmdbId]/route.ts
-import { NextResponse } from "next/server";
-import { doc, getDoc } from "firebase/firestore";
-import { firestore } from "@/lib/firebase";
+import { NextResponse } from "next/server"
 
-const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc"; // <-- CHAVE ATUALIZADA
-const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+// Lista de URLs base para tentar
+const STREAM_API_URLS = [
+  "https://baby-beamup.club/stream/movie",
+  "https://da5f663b4690-skyflixfork.baby-beamup.club/stream/movie",
+]
 
-// ... (o resto do arquivo permanece o mesmo)
-export async function GET(request: Request, { params }: { params: { tmdbId: string } }) {
-  const { tmdbId } = params;
+export async function GET(request: Request, { params }: { params: { imdbId: string } }) {
+  const { imdbId } = params
 
-  if (!tmdbId) {
-    return NextResponse.json({ error: "TMDB ID é necessário." }, { status: 400 });
+  if (!imdbId) {
+    console.error("[API/Stream/Movie] Erro: IMDb ID não fornecido na requisição.")
+    return NextResponse.json({ error: "IMDb ID é necessário." }, { status: 400 })
   }
 
-  try {
-    const docRef = doc(firestore, "media", tmdbId);
-    const docSnap = await getDoc(docRef);
+  console.log(`[API/Stream/Movie] Recebida requisição para IMDb ID: ${imdbId}`)
 
-    const cacheHeaders = {
-      'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=1800'
-    };
-    const notFoundCacheHeaders = {
-      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=150'
-    };
-
-    let movieTitle: string | null = null;
-    let originalMovieTitle: string | null = null;
-    let backdropPath: string | null = null;
-
+  // Tenta cada URL base até encontrar uma que funcione
+  for (const baseUrl of STREAM_API_URLS) {
     try {
-      const tmdbRes = await fetch(`${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
-      if (tmdbRes.ok) {
-        const tmdbData = await tmdbRes.json();
-        movieTitle = tmdbData.title;
-        originalMovieTitle = tmdbData.original_title;
-        backdropPath = tmdbData.backdrop_path;
-      }
-    } catch (tmdbError) {
-      console.warn("Não foi possível buscar informações do TMDb para o filme:", tmdbId, tmdbError);
-    }
+      const fullUrl = `${baseUrl}/${imdbId}.json`
+      console.log(`[API/Stream/Movie] Tentando buscar streams de: ${fullUrl}`)
 
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      if (data.type === 'movie' && data.urls && data.urls.length > 0) {
-        const validStream = data.urls.find((u: any) => u?.url?.includes("short.icu"));
-        
-        if (validStream) {
-          const stream = {
-              playerType: 'abyss',
-              url: validStream.url,
-              name: validStream.quality || "Fonte Principal"
-          };
-          return NextResponse.json({ 
-            streams: [stream], 
-            title: movieTitle || data.title,
-            originalTitle: originalMovieTitle,
-            backdropPath: backdropPath
-          }, { headers: cacheHeaders });
-        }
-      }
-    }
-    
-    return NextResponse.json({ 
-      streams: [], 
-      title: movieTitle || null, 
-      originalTitle: originalMovieTitle,
-      backdropPath: backdropPath
-    }, { headers: notFoundCacheHeaders });
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 segundos
 
-  } catch (error) {
-    console.error(`Erro ao buscar streams para o filme ${tmdbId}:`, error);
-    return NextResponse.json({ error: "Falha ao buscar streams" }, { status: 500 });
+      const response = await fetch(fullUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      })
+
+      clearTimeout(timeoutId)
+
+      console.log(
+        `[API/Stream/Movie] Resposta de ${baseUrl} para ${imdbId}: Status ${response.status}, OK: ${response.ok}`,
+      )
+
+      if (!response.ok) {
+        console.warn(`[API/Stream/Movie] Erro HTTP de ${baseUrl} para ${imdbId}: Status ${response.status}`)
+        continue // Tenta a próxima URL
+      }
+
+      // Verifica o Content-Type
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        console.warn(`[API/Stream/Movie] Resposta de ${baseUrl} não é JSON. Content-Type: ${contentType}`)
+        continue // Tenta a próxima URL
+      }
+
+      let data
+      try {
+        data = await response.json()
+      } catch (jsonError: any) {
+        console.error(`[API/Stream/Movie] Erro de parsing JSON de ${baseUrl} para ${imdbId}:`, jsonError.message)
+        continue // Tenta a próxima URL
+      }
+
+      console.log(
+        `[API/Stream/Movie] Sucesso com ${baseUrl}! Streams encontrados para ${imdbId}: ${data.streams ? data.streams.length : 0}`,
+      )
+
+      // Se chegou até aqui, encontrou dados válidos
+      return NextResponse.json(data)
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        console.error(`[API/Stream/Movie] Timeout na requisição para ${baseUrl}/${imdbId}`)
+      } else {
+        console.error(`[API/Stream/Movie] Erro inesperado com ${baseUrl} para ${imdbId}:`, error.message || error)
+      }
+      // Continua para a próxima URL
+    }
   }
+
+  // Se chegou até aqui, nenhuma URL funcionou
+  console.error(`[API/Stream/Movie] Todas as URLs falharam para ${imdbId}`)
+  return NextResponse.json(
+    {
+      streams: [],
+      error: "Nenhum stream disponível no momento",
+    },
+    { status: 200 },
+  )
 }
