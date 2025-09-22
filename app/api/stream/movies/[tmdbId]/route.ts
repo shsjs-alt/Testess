@@ -1,7 +1,5 @@
-// PrimeVicio - Site/app/api/stream/movies/[tmdbId]/route.ts
+// app/api/stream/movies/[tmdbId]/route.ts
 import { NextResponse } from "next/server";
-import { doc, getDoc } from "firebase/firestore";
-import { firestore } from "@/lib/firebase";
 
 const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
@@ -21,41 +19,6 @@ export async function GET(
   }
 
   try {
-    // Tenta primeiro a API Roxano
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-    let stream = {
-      playerType: "custom",
-      url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
-      name: "Servidor Principal",
-    };
-
-    // --- LÓGICA DE FALLBACK ---
-    // Se a roxano não funcionar (a validação real do link é no proxy),
-    // aqui adicionamos a lógica para buscar no Firebase.
-    // A API agora tentará buscar no Firestore se a primeira fonte falhar.
-
-    const docRef = doc(firestore, "movies", tmdbId);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists() && !roxanoUrl) { // Se não tem nem no Firestore nem na Roxano
-        return NextResponse.json({ error: "Nenhum stream encontrado" }, { status: 404 });
-    }
-
-    let streams = [];
-    if(roxanoUrl) {
-        streams.push(stream);
-    }
-    if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.downloadUrl) {
-            streams.push({
-                playerType: "mp4",
-                url: data.downloadUrl,
-                name: "Servidor Alternativo"
-            });
-        }
-    }
-    
     // --- MUDANÇA 1: Buscar dados do filme no TMDB ---
     let movieTitle: string | null = null;
     let originalMovieTitle: string | null = null;
@@ -72,16 +35,26 @@ export async function GET(
     } catch (tmdbError) {
       console.warn("API de Filmes: Não foi possível buscar informações do TMDB para o filme:", tmdbId, tmdbError);
     }
+    
+    // Monta o link da API de stream.
+    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+
+    const stream = {
+      playerType: "custom",
+      url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+      name: "Servidor Principal",
+    };
 
     const cacheHeaders = {
       "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=1800",
     };
     
+    // --- MUDANÇA 2: Retornar os dados do filme junto com o link ---
     return NextResponse.json({
-      streams,
-      title: movieTitle,
+      streams: [stream],
+      title: movieTitle,          // Nome real do filme
       originalTitle: originalMovieTitle,
-      backdropPath: backdropPath,
+      backdropPath: backdropPath, // Imagem de fundo
     }, { headers: cacheHeaders });
 
   } catch (error) {

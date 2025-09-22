@@ -1,7 +1,5 @@
-// PrimeVicio - Site/app/api/stream/series/[...params]/route.ts
+// app/api/stream/series/[...params]/route.ts
 import { NextResponse } from "next/server";
-import { doc, getDoc } from "firebase/firestore";
-import { firestore } from "@/lib/firebase";
 
 const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
@@ -21,38 +19,8 @@ export async function GET(
   }
 
   try {
-    // Tenta primeiro a API Roxano
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-    let stream = {
-      playerType: "custom",
-      url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
-      name: `Servidor Principal (T${season} E${episode})`,
-    };
-    
-    // --- LÓGICA DE FALLBACK ---
-    const docRef = doc(firestore, "series", tmdbId, "seasons", season, "episodes", episode);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists() && !roxanoUrl) {
-        return NextResponse.json({ error: "Nenhum stream encontrado" }, { status: 404 });
-    }
-    
-    let streams = [];
-    if(roxanoUrl) {
-        streams.push(stream);
-    }
-    if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.downloadUrl) {
-            streams.push({
-                playerType: "mp4",
-                url: data.downloadUrl,
-                name: "Servidor Alternativo"
-            });
-        }
-    }
-
     // --- CORREÇÃO 1: Buscando dados da série no TMDB ---
+    // Adicionamos uma busca à API do TMDB para pegar o nome real e a imagem de fundo.
     let tvTitle: string | null = null;
     let originalTvTitle: string | null = null;
     let backdropPath: string | null = null;
@@ -69,15 +37,26 @@ export async function GET(
       console.warn("API de Séries: Não foi possível buscar informações do TMDB para a série:", tmdbId, tmdbError);
     }
     
+    // Monta o link da roxanoplay.
+    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
+
+    const stream = {
+      playerType: "custom",
+      url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+      name: `Servidor Principal (T${season} E${episode})`,
+    };
+
     const cacheHeaders = {
       "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=1800",
     };
     
+    // --- CORREÇÃO 2: Retornando os dados da série junto com o link ---
+    // Agora a resposta da API inclui o título e a imagem de fundo.
     return NextResponse.json({
-      streams,
-      title: tvTitle,
+      streams: [stream],
+      title: tvTitle, // Nome real da série
       originalTitle: originalTvTitle,
-      backdropPath: backdropPath,
+      backdropPath: backdropPath, // Imagem de fundo
     }, { headers: cacheHeaders });
 
   } catch (error) {
