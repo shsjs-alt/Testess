@@ -14,10 +14,7 @@ export async function GET(
   const [tmdbId, season, episode] = params.params;
 
   if (!tmdbId || !season || !episode) {
-    return NextResponse.json(
-      { error: "TMDB ID, temporada e episódio são necessários." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "TMDB ID, temporada e episódio são necessários." }, { status: 400 });
   }
 
   try {
@@ -34,73 +31,51 @@ export async function GET(
         backdropPath = tmdbData.backdrop_path;
       }
     } catch (tmdbError) {
-      console.warn("API de Séries: Não foi possível buscar informações do TMDB.", tmdbError);
+      console.warn("[API Séries] Falha ao buscar dados do TMDB.", tmdbError);
     }
+    
+    const cacheHeaders = { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=1800" };
 
-    const cacheHeaders = {
-      "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=1800",
-    };
-
-    // 1. Tenta buscar da API da Roxano
+    // 1. Tenta buscar da Roxano
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(roxanoUrl, { signal: controller.signal, method: 'HEAD' });
-      clearTimeout(timeoutId);
-      
-      if (response.ok && response.headers.get("Content-Length") !== "0") {
-        console.log(`[API Séries] Stream encontrado na Roxano para ${tmdbId} S${season}E${episode}`);
+      const response = await fetch(roxanoUrl, { method: 'HEAD', signal: AbortSignal.timeout(4000) });
+      if (response.ok && Number(response.headers.get("Content-Length")) > 0) {
+        console.log(`[API Séries] Sucesso com Roxano para ${tmdbId} S${season}E${episode}`);
         const roxanoStream = {
           playerType: "custom",
           url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
           name: `Servidor Principal (T${season} E${episode})`,
         };
         return NextResponse.json({
-          streams: [roxanoStream],
-          title: tvTitle,
-          originalTitle: originalTvTitle,
-          backdropPath: backdropPath,
+          streams: [roxanoStream], title: tvTitle, originalTitle: originalTvTitle, backdropPath: backdropPath,
         }, { headers: cacheHeaders });
       }
-      throw new Error(`Roxano respondeu com status: ${response.status}`);
     } catch (error) {
-      console.warn(`[API Séries] Roxano falhou para ${tmdbId} S${season}E${episode}. Tentando Firestore... Erro:`, error);
+      console.warn(`[API Séries] Roxano falhou para ${tmdbId} S${season}E${episode}. Tentando Firestore...`);
+    }
 
-      // 2. Fallback para o Firestore
-      const docRef = doc(firestore, "series", tmdbId, "seasons", season, "episodes", episode);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists() && docSnap.data().mp4Url) {
-        console.log(`[API Séries] Stream encontrado no Firestore para ${tmdbId} S${season}E${episode}`);
-        const firestoreStream = {
-          playerType: "custom",
-          url: docSnap.data().mp4Url,
-          name: `Servidor Secundário (T${season} E${episode})`,
-        };
-        
-        return NextResponse.json({
-          streams: [firestoreStream],
-          title: tvTitle,
-          originalTitle: originalTvTitle,
-          backdropPath: backdropPath,
-        }, { headers: cacheHeaders });
-      }
+    // 2. Fallback para o Firestore
+    const docRef = doc(firestore, "series", tmdbId, "seasons", season, "episodes", episode);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists() && docSnap.data()?.mp4Url) {
+      console.log(`[API Séries] Sucesso com Firestore para ${tmdbId} S${season}E${episode}`);
+      const firestoreStream = {
+        playerType: "default",
+        url: docSnap.data().mp4Url,
+        name: `Servidor Secundário (T${season} E${episode})`,
+      };
+      return NextResponse.json({
+        streams: [firestoreStream], title: tvTitle, originalTitle: originalTvTitle, backdropPath: backdropPath,
+      }, { headers: cacheHeaders });
     }
 
     // 3. Se nenhuma fonte funcionar
-    console.log(`[API Séries] Nenhum stream encontrado para ${tmdbId} S${season}E${episode}`);
-    return NextResponse.json(
-      { error: "Nenhum stream encontrado para este episódio." },
-      { status: 404 }
-    );
+    console.error(`[API Séries] Nenhuma fonte de stream encontrada para ${tmdbId} S${season}E${episode}`);
+    return NextResponse.json({ error: "Não foi possível obter o link de streaming." }, { status: 404 });
 
   } catch (error) {
-    console.error(`[API Séries] Erro geral ao buscar streams para ${tmdbId} S${season}E${episode}:`, error);
-    return NextResponse.json(
-      { error: "Falha geral ao buscar streams" },
-      { status: 500 }
-    );
+    console.error(`[API Séries] Erro crítico para ${tmdbId} S${season}E${episode}:`, error);
+    return NextResponse.json({ error: "Falha ao buscar streams." }, { status: 500 });
   }
 }
