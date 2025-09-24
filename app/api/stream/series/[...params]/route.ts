@@ -12,8 +12,10 @@ export async function GET(
   { params }: { params: { params: string[] } }
 ) {
   const [tmdbId, season, episode] = params.params;
+  const seasonNum = parseInt(season, 10);
+  const episodeNum = parseInt(episode, 10);
 
-  if (!tmdbId || !season || !episode) {
+  if (!tmdbId || isNaN(seasonNum) || isNaN(episodeNum)) {
     return NextResponse.json(
       { error: "TMDB ID, temporada e episódio são necessários." },
       { status: 400 }
@@ -64,24 +66,32 @@ export async function GET(
       const docSnap = await getDoc(docRef);
       const docData = docSnap.data();
 
-      // **LÓGICA CORRIGIDA CONFORME A IMAGEM**
-      // Navega pela estrutura aninhada: seasons -> [num] -> episodes -> [num] -> url
+      // **LÓGICA FINAL E CORRETA - BASEADA NA ÚLTIMA IMAGEM**
       if (docSnap.exists() && docData) {
+        // 1. Acessa a temporada correta
         const seasonData = docData.seasons?.[season];
-        const episodeData = seasonData?.episodes?.[episode];
+        
+        // 2. Verifica se a temporada tem um array de episódios
+        if (seasonData && Array.isArray(seasonData.episodes)) {
+          // 3. Procura no array pelo episódio com o número correto
+          const episodeData = seasonData.episodes.find(
+            (ep: any) => ep.episode_number === episodeNum
+          );
 
-        if (episodeData && episodeData.url) {
-          const firestoreStream = {
-            playerType: "custom",
-            url: episodeData.url,
-            name: "Servidor Firebase",
-          };
-          return NextResponse.json({
-            streams: [firestoreStream],
-            title: tvTitle,
-            originalTitle: originalTvTitle,
-            backdropPath: backdropPath,
-          });
+          // 4. Se encontrou o episódio, pega a URL do primeiro item do array 'urls'
+          if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
+            const firestoreStream = {
+              playerType: "custom",
+              url: episodeData.urls[0].url,
+              name: "Servidor Firebase",
+            };
+            return NextResponse.json({
+              streams: [firestoreStream],
+              title: tvTitle,
+              originalTitle: originalTvTitle,
+              backdropPath: backdropPath,
+            });
+          }
         }
       }
     } catch (error) {
