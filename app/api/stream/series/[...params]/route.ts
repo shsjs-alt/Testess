@@ -63,21 +63,26 @@ export async function GET(
       const docRef = doc(firestore, "media", tmdbId);
       const docSnap = await getDoc(docRef);
       const docData = docSnap.data();
-      const episodeKey = `${season}-${episode}`;
 
-      // Verifica se o documento existe, se 'urls' é um mapa e se a chave do episódio existe
-      if (docSnap.exists() && docData && typeof docData.urls === 'object' && docData.urls[episodeKey]) {
-        const firestoreStream = {
-          playerType: "custom",
-          url: docData.urls[episodeKey],
-          name: "Servidor Firebase",
-        };
-        return NextResponse.json({
-          streams: [firestoreStream],
-          title: tvTitle,
-          originalTitle: originalTvTitle,
-          backdropPath: backdropPath,
-        });
+      // **LÓGICA CORRIGIDA CONFORME A IMAGEM**
+      // Navega pela estrutura aninhada: seasons -> [num] -> episodes -> [num] -> url
+      if (docSnap.exists() && docData) {
+        const seasonData = docData.seasons?.[season];
+        const episodeData = seasonData?.episodes?.[episode];
+
+        if (episodeData && episodeData.url) {
+          const firestoreStream = {
+            playerType: "custom",
+            url: episodeData.url,
+            name: "Servidor Firebase",
+          };
+          return NextResponse.json({
+            streams: [firestoreStream],
+            title: tvTitle,
+            originalTitle: originalTvTitle,
+            backdropPath: backdropPath,
+          });
+        }
       }
     } catch (error) {
       console.error("Erro ao buscar episódio do Firestore:", error);
