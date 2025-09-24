@@ -245,19 +245,46 @@ export default function VideoPlayer({
       // ignore
     }
   }
+  
+  // --- MUDANÇA: Função de Tela Cheia com Rotação de Tela ---
+  const toggleFullscreen = useCallback(async () => {
+    const container = containerRef.current;
+    if (!container) return;
 
-  const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement)
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch((err) => console.error(err))
-    } else {
-      document.exitFullscreen()
+    try {
+      if (!document.fullscreenElement) {
+        // Entrando em tela cheia
+        await container.requestFullscreen();
+        // Tenta travar a orientação em paisagem (deitado)
+        if (screen.orientation && typeof screen.orientation.lock === 'function') {
+          await screen.orientation.lock('landscape');
+        }
+      } else {
+        // Saindo da tela cheia
+        await document.exitFullscreen();
+        // A orientação será destravada pelo event listener abaixo
+      }
+    } catch (err) {
+      console.error("Erro ao gerenciar tela cheia ou orientação:", err);
     }
-  }, [])
+  }, []);
+
+  // --- MUDANÇA: Listener para gerenciar saída da tela cheia ---
   useEffect(() => {
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
-  }, [])
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isCurrentlyFullscreen);
+
+      // Se saiu da tela cheia, destrava a orientação
+      if (!isCurrentlyFullscreen && screen.orientation && typeof screen.orientation.unlock === 'function') {
+        screen.orientation.unlock();
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
 
   const changePlaybackRate = (rate: number) => {
     if (!videoRef.current) return
