@@ -1,5 +1,7 @@
 // app/api/stream/series/[...params]/route.ts
 import { NextResponse } from "next/server";
+import { firestore } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
@@ -19,8 +21,6 @@ export async function GET(
   }
 
   try {
-    // --- CORREÇÃO 1: Buscando dados da série no TMDB ---
-    // Adicionamos uma busca à API do TMDB para pegar o nome real e a imagem de fundo.
     let tvTitle: string | null = null;
     let originalTvTitle: string | null = null;
     let backdropPath: string | null = null;
@@ -36,28 +36,57 @@ export async function GET(
     } catch (tmdbError) {
       console.warn("API de Séries: Não foi possível buscar informações do TMDB para a série:", tmdbId, tmdbError);
     }
-    
-    // Monta o link da roxanoplay.
+
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
+    try {
+      // Tenta a API principal primeiro
+      const response = await fetch(roxanoUrl);
+      if (response.ok && response.headers.get('content-length') !== '0') {
+        const stream = {
+          playerType: "custom",
+          url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+          name: `Servidor Principal (T${season} E${episode})`,
+        };
+        return NextResponse.json({
+          streams: [stream],
+          title: tvTitle,
+          originalTitle: originalTvTitle,
+          backdropPath: backdropPath,
+        });
+      }
+    } catch (error) {
+      console.log("API Principal de séries falhou, tentando fallback para o Firestore...");
+    }
 
-    const stream = {
-      playerType: "custom",
-      url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
-      name: `Servidor Principal (T${season} E${episode})`,
-    };
+    // Fallback para o Firestore
+    try {
+      const docRef = doc(firestore, "media", tmdbId);
+      const docSnap = await getDoc(docRef);
+      const docData = docSnap.data();
+      const episodeKey = `${season}-${episode}`;
 
-    const cacheHeaders = {
-      "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=1800",
-    };
-    
-    // --- CORREÇÃO 2: Retornando os dados da série junto com o link ---
-    // Agora a resposta da API inclui o título e a imagem de fundo.
-    return NextResponse.json({
-      streams: [stream],
-      title: tvTitle, // Nome real da série
-      originalTitle: originalTvTitle,
-      backdropPath: backdropPath, // Imagem de fundo
-    }, { headers: cacheHeaders });
+      // Verifica se o documento existe, se 'urls' é um mapa e se a chave do episódio existe
+      if (docSnap.exists() && docData && typeof docData.urls === 'object' && docData.urls[episodeKey]) {
+        const firestoreStream = {
+          playerType: "custom",
+          url: docData.urls[episodeKey],
+          name: "Servidor Firebase",
+        };
+        return NextResponse.json({
+          streams: [firestoreStream],
+          title: tvTitle,
+          originalTitle: originalTvTitle,
+          backdropPath: backdropPath,
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao buscar episódio do Firestore:", error);
+    }
+
+    return NextResponse.json(
+      { error: "Nenhum stream disponível para este episódio." },
+      { status: 404 }
+    );
 
   } catch (error) {
     console.error(

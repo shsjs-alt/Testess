@@ -8,7 +8,7 @@ const firebaseConfig = {
   authDomain: "cineveok.firebaseapp.com",
   databaseURL: "https://cineveok-default-rtdb.firebaseio.com",
   projectId: "cineveok",
-  storageBucket: "cineveok.firebasestorage.app", // O padrão é .appspot.com, se tiver problemas, volte para o que estava
+  storageBucket: "cineveok.firebasestorage.app",
   messagingSenderId: "805536124347",
   appId: "1:805536124347:web:b408c28cb0a4dc914d089e",
   measurementId: "G-H7WVDQQDVJ"
