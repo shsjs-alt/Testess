@@ -19,7 +19,7 @@ export function PlayerOverlay({ title, originalTitle, onPlay, isLoading, backgro
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute inset-0 z-20 flex flex-col items-center justify-end p-4 text-center text-white"
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4 text-center text-white"
     >
       {/* Container da Imagem de Fundo e do Overlay Escuro */}
       {backgroundUrl && (
@@ -31,8 +31,8 @@ export function PlayerOverlay({ title, originalTitle, onPlay, isLoading, backgro
         </div>
       )}
       
-      {/* Container do Conteúdo (título e botão) - REPOSICIONADO */}
-      <div className="relative z-10 flex flex-col items-center mb-48 md:mb-60">
+      {/* Container do Conteúdo (título e botão) - Centralizado */}
+      <div className="relative z-10 flex flex-col items-center">
         <h1 className="text-3xl md:text-5xl font-bold text-shadow-lg">{title}</h1>
         {originalTitle && <p className="text-sm text-zinc-300 mt-2 text-shadow">{originalTitle}</p>}
         
@@ -49,7 +49,7 @@ export function PlayerOverlay({ title, originalTitle, onPlay, isLoading, backgro
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
           ) : (
-            // Conteúdo do botão reestruturado para ser idêntico à imagem
+            // Conteúdo do botão
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Zap className="h-6 w-6 text-red-500 fill-red-500/50" />

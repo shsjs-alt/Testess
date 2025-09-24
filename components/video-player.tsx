@@ -30,7 +30,10 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
 
-  const [isPlaying, setIsPlaying] = useState(false)
+  // O player começa tocando e com os controles visíveis.
+  const [isPlaying, setIsPlaying] = useState(true)
+  const [showControls, setShowControls] = useState(true)
+
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [bufferedEnd, setBufferedEnd] = useState(0)
@@ -39,18 +42,16 @@ export default function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showControls, setShowControls] = useState(true)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [pipSupported, setPipSupported] = useState(false)
   const [isPipActive, setIsPipActive] = useState(false)
-  const [showLogo, setShowLogo] = useState(false)
-
-  // UI helpers
+  
+  // Helpers da UI
   const [hoverTime, setHoverTime] = useState<number | null>(null)
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
 
-  // Keys for storage
+  // Chaves para o armazenamento local
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
 
@@ -61,7 +62,7 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
 
-  // Restore volume and optionally last position
+  // Restaura volume e, opcionalmente, a última posição
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem(volumeKey)
@@ -85,7 +86,7 @@ export default function VideoPlayer({
     }
   }, [positionKey, rememberPosition])
 
-  // Save position periodically
+  // Salva a posição periodicamente
   useEffect(() => {
     if (!rememberPosition) return
     const id = setInterval(() => {
@@ -100,19 +101,20 @@ export default function VideoPlayer({
     return () => clearInterval(id)
   }, [positionKey, rememberPosition])
 
-  // PIP support
+  // Suporte a Picture-in-Picture
   useEffect(() => {
     setPipSupported(typeof document !== "undefined" && "pictureInPictureEnabled" in document)
   }, [])
 
-  // Auto-hide controls
+  // Esconde os controles automaticamente
   useEffect(() => {
     let timeout: NodeJS.Timeout
     const container = containerRef.current
     const reset = () => {
       clearTimeout(timeout)
       setShowControls(true)
-      if (isPlaying) timeout = setTimeout(() => setShowControls(false), 2500)
+      // Só esconde os controles se o vídeo estiver tocando
+      if (isPlaying) timeout = setTimeout(() => setShowControls(false), 3000)
     }
     const onMove = () => reset()
     const onLeave = () => {
@@ -135,12 +137,24 @@ export default function VideoPlayer({
     }
   }, [isPlaying])
 
-  // Video events
+  // Eventos do vídeo
   const handleLoadStart = () => {
     setIsLoading(true)
     setError(null)
   }
-  const handleCanPlay = () => setIsLoading(false)
+  const handleCanPlay = () => {
+    setIsLoading(false)
+    const v = videoRef.current;
+    if (v) {
+        // Tenta dar play, capturando erros de navegadores que bloqueiam autoplay
+        v.play().then(() => {
+            setIsPlaying(true);
+        }).catch(err => {
+            console.warn("Autoplay foi impedido:", err)
+            setIsPlaying(false); // Se o autoplay falhar, mostra o botão de play
+        });
+    }
+  }
   const handleError = () => {
     setIsLoading(false)
     setError("Não foi possível carregar o vídeo.")
@@ -150,12 +164,7 @@ export default function VideoPlayer({
     const newCurrentTime = videoRef.current.currentTime;
     setCurrentTime(newCurrentTime)
 
-    // Lógica para mostrar a logo
-    if (!showLogo && newCurrentTime > 10) {
-        setShowLogo(true)
-    }
-
-    // Update buffered end
+    // Atualiza o buffer
     try {
       const buf = videoRef.current.buffered
       if (buf && buf.length > 0) {
@@ -181,6 +190,20 @@ export default function VideoPlayer({
     }
     setIsPlaying(!v.paused)
   }, [])
+  
+  // Handler de clique para a área principal (apenas desktop)
+  const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Impede a execução em dispositivos com toque
+    if ('ontouchstart' in window) {
+      return;
+    }
+    // Verifica se o clique foi na área dos controles para não alternar o play
+    if ((e.target as HTMLElement).closest('[data-controls]')) {
+        return;
+    }
+    togglePlay();
+  };
+
 
   const seek = useCallback((amount: number) => {
     const v = videoRef.current
@@ -252,7 +275,7 @@ export default function VideoPlayer({
         await (v as any).requestPictureInPicture()
       }
     } catch (e) {
-      console.error("PIP error", e)
+      console.error("Erro no PIP", e)
     }
   }, [])
 
@@ -283,12 +306,11 @@ export default function VideoPlayer({
     if (videoRef.current) videoRef.current.load()
   }
 
-  // Keyboard shortcuts
+  // Atalhos de teclado
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return
       
-      // Lógica para segurar a barra de espaço
       if (e.key === ' ' && !e.repeat) {
           e.preventDefault()
           if (!isPlaying || isSpeedingUpRef.current) return
@@ -305,33 +327,14 @@ export default function VideoPlayer({
       }
 
       switch (e.key.toLowerCase()) {
-        case "k":
-          e.preventDefault()
-          togglePlay()
-          break
-        case "f":
-          toggleFullscreen()
-          break
-        case "m":
-          toggleMute()
-          break
-        case "p":
-          togglePip()
-          break
-        case "arrowright":
-          seek(10)
-          break
-        case "arrowleft":
-          seek(-10)
-          break
-        case "arrowup":
-          e.preventDefault()
-          handleVolumeChange([Math.min(1, volume + 0.1)])
-          break
-        case "arrowdown":
-          e.preventDefault()
-          handleVolumeChange([Math.max(0, volume - 0.1)])
-          break
+        case "k": e.preventDefault(); togglePlay(); break
+        case "f": toggleFullscreen(); break
+        case "m": toggleMute(); break
+        case "p": togglePip(); break
+        case "arrowright": seek(10); break
+        case "arrowleft": seek(-10); break
+        case "arrowup": e.preventDefault(); handleVolumeChange([Math.min(1, volume + 0.1)]); break
+        case "arrowdown": e.preventDefault(); handleVolumeChange([Math.max(0, volume - 0.1)]); break
       }
     }
     
@@ -365,7 +368,7 @@ export default function VideoPlayer({
     }
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
 
-  // Hover time preview
+  // Preview de tempo na barra de progresso
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration) return
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
@@ -374,19 +377,19 @@ export default function VideoPlayer({
   }
   const onProgressLeave = () => setHoverTime(null)
 
-  // Mobile double-tap zones for quick seek
+  // Toque duplo no mobile para avançar/retroceder
   const onMobileTap = (dir: "left" | "right") => {
     const now = Date.now()
     if (now - lastTapRef.current < 320) {
       seek(dir === "left" ? -10 : 10)
     } else {
-      // single tap toggles controls
+      // Toque único apenas mostra os controles, não pausa
       setShowControls((s) => !s)
     }
     lastTapRef.current = now
   }
   
-  // Mobile hold to speed up
+  // Segurar o toque no mobile para acelerar
   const handleTouchStart = () => {
     holdTimeoutRef.current = setTimeout(() => {
       if (videoRef.current && isPlaying) {
@@ -394,7 +397,7 @@ export default function VideoPlayer({
         videoRef.current.playbackRate = 2
         setShowSpeedHint(true)
       }
-    }, 500) // Meio segundo de espera
+    }, 500)
   }
   
   const handleTouchEnd = () => {
@@ -420,7 +423,7 @@ export default function VideoPlayer({
       <div
         ref={containerRef}
         className={cn(
-          "relative w-full aspect-video bg-black rounded-xl overflow-hidden group select-none", // Adicionado select-none
+          "relative w-full aspect-video bg-black rounded-xl overflow-hidden group select-none",
           isPlaying && !showControls && "cursor-none"
         )}
         onDoubleClick={toggleFullscreen}
@@ -440,30 +443,21 @@ export default function VideoPlayer({
           onTouchEnd={handleTouchEnd}
           onTouchCancel={handleTouchEnd}
           preload="metadata"
+          autoPlay
+          playsInline
+        />
+        
+        <div 
+          className="absolute inset-0 z-0"
+          onClick={handleMainClick}
         />
 
-        <AnimatePresence>
-            {showLogo && (
-                <motion.img
-                    src="https://i.ibb.co/s91tyczd/Gemini-Generated-Image-ejjiocejjiocejji-1.png"
-                    alt="Logo"
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                    className="absolute bottom-0 left-0 h-8 w-auto z-20 pointer-events-none select-none" // Adicionado select-none
-                />
-            )}
-        </AnimatePresence>
-
-
-        {/* Loading */}
         {isLoading && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80">
             <div className="text-center text-white">
@@ -483,7 +477,6 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Center big play when paused */}
         {!isLoading && !error && !isPlaying && (
           <button
             aria-label="Reproduzir"
@@ -499,7 +492,6 @@ export default function VideoPlayer({
           </button>
         )}
 
-        {/* Seek hint */}
         {showSeekHint && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             <div className="rounded-full bg-black/60 px-3 py-1 text-sm text-white ring-1 ring-white/10">
@@ -508,7 +500,6 @@ export default function VideoPlayer({
           </div>
         )}
         
-        {/* Speed hint */}
         <AnimatePresence>
             {showSpeedHint && (
                  <motion.div
@@ -524,28 +515,25 @@ export default function VideoPlayer({
             )}
         </AnimatePresence>
 
-        {/* Mobile tap zones */}
         <div className="absolute inset-0 z-0 md:hidden">
           <div className="absolute left-0 top-0 h-full w-1/2" onClick={() => onMobileTap("left")} />
           <div className="absolute right-0 top-0 h-full w-1/2" onClick={() => onMobileTap("right")} />
         </div>
 
-        {/* Controls */}
         <div
+          data-controls
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3 md:p-4 transition-opacity duration-300",
             "bg-gradient-to-t from-black/80 via-black/20 to-transparent",
             showControls ? "opacity-100" : "opacity-0",
           )}
         >
-          {/* Progress */}
           <div
             ref={progressWrapRef}
             className="pointer-events-auto relative mb-2"
             onMouseMove={onProgressMouseMove}
             onMouseLeave={onProgressLeave}
           >
-            {/* buffered track */}
             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-white/10" />
             <div
               className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded bg-white/20"
@@ -553,7 +541,6 @@ export default function VideoPlayer({
                 width: duration > 0 ? `${(Math.min(bufferedEnd, duration) / duration) * 100}%` : "0%",
               }}
             />
-            {/* slider */}
             <Slider
               value={[Math.min(currentTime, duration || 0)]}
               max={duration || 100}
@@ -561,7 +548,6 @@ export default function VideoPlayer({
               onValueChange={handleSeekSlider}
               className="relative h-1"
             />
-            {/* time row */}
             <div className="mt-1.5 flex select-none justify-between text-[11px] text-white/80">
               <span>{formatTime(currentTime)}</span>
               <span>{formatTime(duration)}</span>
@@ -577,9 +563,7 @@ export default function VideoPlayer({
             )}
           </div>
 
-          {/* Buttons */}
           <div className="pointer-events-auto flex items-center justify-between">
-            {/* Left group */}
             <div className="flex items-center gap-1 md:gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -623,12 +607,10 @@ export default function VideoPlayer({
               </div>
             </div>
 
-            {/* Title (desktop) */}
             <div className="pointer-events-none absolute left-1/2 hidden max-w-[40vw] -translate-x-1/2 truncate text-sm text-white/80 md:block">
               {title}
             </div>
 
-            {/* Right group */}
             <div className="flex items-center gap-1 md:gap-2">
               {downloadUrl && (
                 <Tooltip>
