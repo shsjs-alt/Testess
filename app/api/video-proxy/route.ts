@@ -1,18 +1,17 @@
 // app/api/video-proxy/route.ts
 import { NextResponse, NextRequest } from "next/server";
 
-// --- MUDANÇA PRINCIPAL ---
-// Alteramos o runtime para 'edge'. A Edge Network da Vercel é otimizada
-// para streaming de dados e proxy, o que deve resolver os problemas de
-// travamento e buffering durante a reprodução do vídeo.
-export const runtime = "edge";
+// Revertemos para o runtime 'nodejs', que é mais estável para este caso de uso.
+export const runtime = "nodejs";
 
+// Lista de cabeçalhos que não devem ser repassados para o servidor de vídeo
 const BLOCKED_HEADERS = new Set([
   "host", "content-length", "transfer-encoding", "connection", "keep-alive",
   "upgrade", "sec-fetch-mode", "sec-fetch-site", "sec-fetch-dest",
   "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
 ]);
 
+// Função para limpar e preparar os cabeçalhos da requisição
 function sanitizeHeaders(input: Record<string, string> | undefined | null) {
   const out: Record<string, string> = {};
   if (!input) return out;
@@ -25,6 +24,7 @@ function sanitizeHeaders(input: Record<string, string> | undefined | null) {
   return out;
 }
 
+// Função para gerar possíveis URLs de Referer
 function buildRefererCandidates(target: URL): string[] {
   const hostParts = target.hostname.split(".");
   const baseDomain = hostParts.length >= 2 ? `${hostParts.slice(-2).join(".")}` : target.hostname;
@@ -109,6 +109,7 @@ export async function GET(request: NextRequest) {
   for (const headersToSend of attempts) {
     try {
       const res = await proxyOnce(videoUrl, headersToSend);
+      // Se a resposta for bem-sucedida (OK ou Partial Content), transmita-a diretamente.
       if (res.ok || res.status === 206) {
         const responseHeaders = new Headers();
         const contentType = res.headers.get("Content-Type");
@@ -121,6 +122,7 @@ export async function GET(request: NextRequest) {
         if (acceptRanges) responseHeaders.set("Accept-Ranges", acceptRanges);
         if (contentRange) responseHeaders.set("Content-Range", contentRange);
         
+        // Cabeçalhos para garantir que o navegador não armazene o vídeo em cache
         responseHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
         responseHeaders.set("Pragma", "no-cache");
         responseHeaders.set("Expires", "0");
@@ -136,11 +138,12 @@ export async function GET(request: NextRequest) {
         });
       }
       lastResponse = res;
-      if (res.status === 401 || res.status === 403) continue;
-      // Não tente ler o body de uma resposta com erro aqui, pois pode consumir o stream
+      if (res.status === 401 || res.status === 403) continue; // Tenta o próximo se for erro de permissão
+
+      // Otimização: Não lê o corpo do erro, apenas repassa o status
       return new NextResponse(`Falha ao carregar vídeo: ${res.status} - ${res.statusText}`, { status: res.status });
     } catch (error: any) {
-      lastResponse = null;
+      lastResponse = null; // Reseta em caso de erro de rede para não retornar uma resposta inválida
       continue;
     }
   }
