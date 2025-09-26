@@ -33,8 +33,6 @@ export default function TvDetailClient({ id }: { id: string }) {
 
   const handleEpisodeClick = (episode: Episode) => {
     if (!tv) return;
-    // --- CORREÇÃO PRINCIPAL ---
-    // Apenas abre a URL de embed limpa, sem nenhum parâmetro.
     const embedUrl = `/embed/tv/${id}/${selectedSeason}/${episode.episode_number}`;
     window.open(embedUrl, '_blank');
   };

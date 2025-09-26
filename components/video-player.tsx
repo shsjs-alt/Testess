@@ -30,7 +30,6 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
 
-  // O player começa tocando e com os controles visíveis.
   const [isPlaying, setIsPlaying] = useState(true)
   const [showControls, setShowControls] = useState(true)
 
@@ -46,23 +45,20 @@ export default function VideoPlayer({
   const [pipSupported, setPipSupported] = useState(false)
   const [isPipActive, setIsPipActive] = useState(false)
   
-  // Helpers da UI
   const [hoverTime, setHoverTime] = useState<number | null>(null)
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
 
-  // Chaves para o armazenamento local
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
 
-  // Refs para novas funcionalidades
-  const lastTapRef = useRef<number>(0)
+  const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const originalRateRef = useRef<number>(1)
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Restaura volume e, opcionalmente, a última posição
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem(volumeKey)
@@ -86,7 +82,6 @@ export default function VideoPlayer({
     }
   }, [positionKey, rememberPosition])
 
-  // Salva a posição periodicamente
   useEffect(() => {
     if (!rememberPosition) return
     const id = setInterval(() => {
@@ -101,43 +96,43 @@ export default function VideoPlayer({
     return () => clearInterval(id)
   }, [positionKey, rememberPosition])
 
-  // Suporte a Picture-in-Picture
   useEffect(() => {
     setPipSupported(typeof document !== "undefined" && "pictureInPictureEnabled" in document)
   }, [])
 
-  // Esconde os controles automaticamente
-  useEffect(() => {
-    let timeout: NodeJS.Timeout
-    const container = containerRef.current
-    const reset = () => {
-      clearTimeout(timeout)
-      setShowControls(true)
-      // Só esconde os controles se o vídeo estiver tocando
-      if (isPlaying) timeout = setTimeout(() => setShowControls(false), 3000)
+  const hideControls = useCallback(() => {
+    if (isPlaying) {
+      setShowControls(false);
     }
-    const onMove = () => reset()
-    const onLeave = () => {
-      clearTimeout(timeout)
-      if (isPlaying) setShowControls(false)
-    }
-    if (container) {
-      container.addEventListener("mousemove", onMove)
-      container.addEventListener("mouseleave", onLeave)
-      container.addEventListener("touchstart", onMove, { passive: true } as any)
-    }
-    reset()
-    return () => {
-      clearTimeout(timeout)
-      if (container) {
-        container.removeEventListener("mousemove", onMove)
-        container.removeEventListener("mouseleave", onLeave)
-        container.removeEventListener("touchstart", onMove as any)
-      }
-    }
-  }, [isPlaying])
+  }, [isPlaying]);
 
-  // Eventos do vídeo
+  const resetControlsTimeout = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    setShowControls(true);
+    controlsTimeoutRef.current = setTimeout(hideControls, 3500);
+  }, [hideControls]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener("mousemove", resetControlsTimeout);
+      container.addEventListener("mouseleave", hideControls);
+      container.addEventListener("touchstart", resetControlsTimeout, { passive: true });
+    }
+    resetControlsTimeout();
+    return () => {
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      if (container) {
+        container.removeEventListener("mousemove", resetControlsTimeout);
+        container.removeEventListener("mouseleave", hideControls);
+        container.removeEventListener("touchstart", resetControlsTimeout);
+      }
+    };
+  }, [resetControlsTimeout, hideControls]);
+
+
   const handleLoadStart = () => {
     setIsLoading(true)
     setError(null)
@@ -146,12 +141,11 @@ export default function VideoPlayer({
     setIsLoading(false)
     const v = videoRef.current;
     if (v) {
-        // Tenta dar play, capturando erros de navegadores que bloqueiam autoplay
         v.play().then(() => {
             setIsPlaying(true);
         }).catch(err => {
             console.warn("Autoplay foi impedido:", err)
-            setIsPlaying(false); // Se o autoplay falhar, mostra o botão de play
+            setIsPlaying(false);
         });
     }
   }
@@ -164,16 +158,13 @@ export default function VideoPlayer({
     const newCurrentTime = videoRef.current.currentTime;
     setCurrentTime(newCurrentTime)
 
-    // Atualiza o buffer
     try {
       const buf = videoRef.current.buffered
       if (buf && buf.length > 0) {
         const end = buf.end(buf.length - 1)
         setBufferedEnd(end)
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return
@@ -191,19 +182,11 @@ export default function VideoPlayer({
     setIsPlaying(!v.paused)
   }, [])
   
-  // Handler de clique para a área principal (apenas desktop)
   const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Impede a execução em dispositivos com toque
-    if ('ontouchstart' in window) {
-      return;
-    }
-    // Verifica se o clique foi na área dos controles para não alternar o play
-    if ((e.target as HTMLElement).closest('[data-controls]')) {
-        return;
-    }
+    if ('ontouchstart' in window) return;
+    if ((e.target as HTMLElement).closest('[data-controls]')) return;
     togglePlay();
   };
-
 
   const seek = useCallback((amount: number) => {
     const v = videoRef.current
@@ -241,46 +224,35 @@ export default function VideoPlayer({
     setIsMuted(newVolume === 0)
     try {
       localStorage.setItem(volumeKey, String(newVolume))
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
   
-  // --- MUDANÇA: Função de Tela Cheia com Rotação de Tela ---
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
     if (!container) return;
 
     try {
       if (!document.fullscreenElement) {
-        // Entrando em tela cheia
         await container.requestFullscreen();
-        // Tenta travar a orientação em paisagem (deitado)
         if (screen.orientation && typeof screen.orientation.lock === 'function') {
           await screen.orientation.lock('landscape');
         }
       } else {
-        // Saindo da tela cheia
         await document.exitFullscreen();
-        // A orientação será destravada pelo event listener abaixo
       }
     } catch (err) {
       console.error("Erro ao gerenciar tela cheia ou orientação:", err);
     }
   }, []);
 
-  // --- MUDANÇA: Listener para gerenciar saída da tela cheia ---
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
-
-      // Se saiu da tela cheia, destrava a orientação
       if (!isCurrentlyFullscreen && screen.orientation && typeof screen.orientation.unlock === 'function') {
         screen.orientation.unlock();
       }
     };
-
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
@@ -333,7 +305,6 @@ export default function VideoPlayer({
     if (videoRef.current) videoRef.current.load()
   }
 
-  // Atalhos de teclado
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return
@@ -372,7 +343,7 @@ export default function VideoPlayer({
                 clearTimeout(spacebarDownTimer.current);
                 spacebarDownTimer.current = null;
                 if (!isSpeedingUpRef.current) {
-                    togglePlay(); // É um toque rápido
+                    togglePlay();
                 }
             }
             if (isSpeedingUpRef.current) {
@@ -395,7 +366,6 @@ export default function VideoPlayer({
     }
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
 
-  // Preview de tempo na barra de progresso
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration) return
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
@@ -404,19 +374,23 @@ export default function VideoPlayer({
   }
   const onProgressLeave = () => setHoverTime(null)
 
-  // Toque duplo no mobile para avançar/retroceder
-  const onMobileTap = (dir: "left" | "right") => {
-    const now = Date.now()
-    if (now - lastTapRef.current < 320) {
-      seek(dir === "left" ? -10 : 10)
-    } else {
-      // Toque único apenas mostra os controles, não pausa
-      setShowControls((s) => !s)
-    }
-    lastTapRef.current = now
-  }
+  const onMobileTap = (side: 'left' | 'right' | 'center') => {
+    const now = Date.now();
+    const isDoubleTap = now - lastTapRef.current.time < 350 && lastTapRef.current.side === side;
   
-  // Segurar o toque no mobile para acelerar
+    if (isDoubleTap) {
+      if (side === 'left') seek(-10);
+      if (side === 'right') seek(10);
+      lastTapRef.current = { time: 0, side: 'center' }; // Reset after double tap
+    } else if (side === 'center') {
+      togglePlay();
+      lastTapRef.current = { time: now, side };
+    } else {
+      resetControlsTimeout(); // Single tap on sides just shows controls
+      lastTapRef.current = { time: now, side };
+    }
+  };
+  
   const handleTouchStart = () => {
     holdTimeoutRef.current = setTimeout(() => {
       if (videoRef.current && isPlaying) {
@@ -453,7 +427,7 @@ export default function VideoPlayer({
           "relative w-full aspect-video bg-black rounded-xl overflow-hidden group select-none",
           isPlaying && !showControls && "cursor-none"
         )}
-        onDoubleClick={toggleFullscreen}
+        onDoubleClick={e => e.preventDefault()}
       >
         <video
           ref={videoRef}
@@ -542,9 +516,10 @@ export default function VideoPlayer({
             )}
         </AnimatePresence>
 
-        <div className="absolute inset-0 z-0 md:hidden">
-          <div className="absolute left-0 top-0 h-full w-1/2" onClick={() => onMobileTap("left")} />
-          <div className="absolute right-0 top-0 h-full w-1/2" onClick={() => onMobileTap("right")} />
+        <div className="absolute inset-0 z-0 flex md:hidden">
+          <div className="flex-1" onClick={() => onMobileTap('left')} />
+          <div className="w-1/3" onClick={() => onMobileTap('center')} />
+          <div className="flex-1" onClick={() => onMobileTap('right')} />
         </div>
 
         <div
@@ -642,7 +617,7 @@ export default function VideoPlayer({
               {downloadUrl && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                    <a href={downloadUrl} download>
                       <Button size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
                         <Download className="h-5 w-5" />
                       </Button>

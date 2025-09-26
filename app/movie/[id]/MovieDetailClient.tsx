@@ -67,8 +67,6 @@ export default function MovieDetailClient({ id }: { id: string }) {
   const favData: FavoriteItem = { id: movie.id, media_type: "movie", title: movie.title, poster_path: movie.poster_path, backdrop_path: movie.backdrop_path, release_date: movie.release_date, };
   const fav = isFavorite(movie.id, "movie");
 
-  // --- CORREÇÃO APLICADA AQUI ---
-  // Removi o React Fragment (<> e </>) que envolvia o `div` principal.
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50">
       <div className="relative h-[56vh] md:h-[68vh] w-full overflow-hidden">

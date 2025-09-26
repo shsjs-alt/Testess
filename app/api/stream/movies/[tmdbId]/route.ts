@@ -11,7 +11,8 @@ async function getFirestoreStream(docData: any, mediaInfo: any) {
     if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
         const firestoreStream = {
             playerType: "custom",
-            url: docData.urls[0].url,
+            // AQUI ESTÁ A MUDANÇA
+            url: `/api/download/movies/${docData.id}`,
             name: "Servidor Firebase",
         };
         return NextResponse.json({
@@ -33,7 +34,6 @@ export async function GET(
   }
 
   try {
-    // Busca metadados do TMDB primeiro
     let mediaInfo = { title: null, originalTitle: null, backdropPath: null };
     try {
       const tmdbRes = await fetch(`${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
@@ -49,22 +49,17 @@ export async function GET(
       console.warn("API de Filmes: Não foi possível buscar informações do TMDB para o filme:", tmdbId, tmdbError);
     }
 
-    // Busca os dados do Firestore para checar a flag 'forceFirestore'
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
-    const docData = docSnap.exists() ? docSnap.data() : null;
+    const docData = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
 
-    // --- LÓGICA DE PRIORIDADE ---
-    // 1. Se 'forceFirestore' for true, tenta o Firestore IMEDIATAMENTE.
     if (docData?.forceFirestore === true) {
         const firestoreResponse = await getFirestoreStream(docData, mediaInfo);
         if (firestoreResponse) return firestoreResponse;
         
-        // Se falhar mesmo forçando, retorna erro (não tenta a API principal).
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // 2. Se não for forçado, tenta a API principal primeiro.
     try {
       const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
       const response = await fetch(roxanoUrl);
@@ -80,7 +75,6 @@ export async function GET(
       console.log("API Principal falhou, tentando fallback para o Firestore...");
     }
 
-    // 3. Fallback para o Firestore se a API principal falhar.
     const firestoreFallbackResponse = await getFirestoreStream(docData, mediaInfo);
     if (firestoreFallbackResponse) return firestoreFallbackResponse;
 
