@@ -29,7 +29,7 @@ export default function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
-  const "continue-watching-dialog" = useRef < HTMLDivElement > (null)
+  const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
 
   const [isPlaying, setIsPlaying] = useState(true)
   const [showControls, setShowControls] = useState(true)
@@ -41,25 +41,25 @@ export default function VideoPlayer({
   const [isMuted, setIsMuted] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState < string | null > (null)
+  const [error, setError] = useState<string | null>(null)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [pipSupported, setPipSupported] = useState(false)
   const [isPipActive, setIsPipActive] = useState(false)
 
-  const [hoverTime, setHoverTime] = useState < number | null > (null)
-  const [showSeekHint, setShowSeekHint] = useState < null | { dir: "fwd" | "back"; by: number } > (null)
+  const [hoverTime, setHoverTime] = useState<number | null>(null)
+  const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
 
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
 
-  const lastTapRef = useRef < { time: number, side: 'left' | 'right' | 'center' } > ({ time: 0, side: 'center' });
-  const holdTimeoutRef = useRef < NodeJS.Timeout | null > (null)
-  const originalRateRef = useRef < number > (1)
-  const spacebarDownTimer = useRef < NodeJS.Timeout | null > (null);
+  const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
+  const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const originalRateRef = useRef<number>(1)
+  const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
-  const controlsTimeoutRef = useRef < NodeJS.Timeout | null > (null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- CORREÇÃO: Adicionando rotina de limpeza para o player de vídeo ---
   useEffect(() => {
@@ -93,7 +93,7 @@ export default function VideoPlayer({
         const savedPos = localStorage.getItem(positionKey)
         if (savedPos && videoRef.current) {
           const n = Number.parseFloat(savedPos)
-          if (!Number.isNaN(n) && n > 5) {
+          if (!Number.isNaN(n) && n > 5) { // Só mostra o prompt se tiver assistido mais de 5 segundos
             videoRef.current.currentTime = n
             setCurrentTime(n)
             setShowContinueWatching(true)
@@ -542,7 +542,7 @@ export default function VideoPlayer({
         {showContinueWatching && (
           <div
             className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70"
-            ref={"continue-watching-dialog"}
+            ref={continueWatchingDialogRef}
           >
             <p className="text-white text-lg mb-4">Deseja continuar assistindo de onde parou?</p>
             <div className="flex gap-4">
