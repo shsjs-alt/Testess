@@ -4,9 +4,7 @@
 import { useParams } from 'next/navigation';
 import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { AnimatePresence } from 'framer-motion';
 
-import { PlayerOverlay } from '@/components/player-overley';
 import VideoPlayer from '@/components/video-player';
 
 type StreamInfo = {
@@ -19,14 +17,11 @@ type StreamInfo = {
 export default function MovieEmbedPage() {
   const params = useParams();
   const tmdbId = params.tmdbId as string;
+  
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showOverlay, setShowOverlay] = useState(true);
-  const [mediaInfo, setMediaInfo] = useState<{ title: string; originalTitle?: string; backdropPath: string | null }>({
-    title: 'Carregando...',
-    backdropPath: null,
-  });
+  const [mediaTitle, setMediaTitle] = useState('Filme');
 
   useEffect(() => {
     if (!tmdbId) {
@@ -49,11 +44,7 @@ export default function MovieEmbedPage() {
 
         if (stream && stream.playerType === 'custom' && stream.url) {
           setStreamUrl(stream.url);
-          setMediaInfo({
-            title: data.title || "Filme",
-            originalTitle: data.originalTitle || undefined,
-            backdropPath: data.backdropPath,
-          });
+          setMediaTitle(data.title || "Filme");
         } else {
           setError("Nenhum link de streaming disponível para este filme.");
         }
@@ -67,7 +58,7 @@ export default function MovieEmbedPage() {
     fetchMovieData();
   }, [tmdbId]);
 
-  if (loading && showOverlay) {
+  if (loading) {
     return (
       <main className="w-screen h-screen flex items-center justify-center bg-black">
         <Loader2 className="w-12 h-12 animate-spin text-white" />
@@ -85,29 +76,19 @@ export default function MovieEmbedPage() {
     );
   }
 
-  return (
-    <main className="w-screen h-screen relative bg-black">
-      <AnimatePresence>
-        {showOverlay && (
-          <PlayerOverlay
-            title={mediaInfo.title}
-            originalTitle={mediaInfo.originalTitle}
-            onPlay={() => setShowOverlay(false)}
-            isLoading={loading}
-            backgroundUrl={mediaInfo.backdropPath}
-          />
-        )}
-      </AnimatePresence>
-      
-      {streamUrl && !showOverlay && (
+  if (streamUrl) {
+    return (
+      <main className="w-screen h-screen relative bg-black">
         <VideoPlayer
           src={streamUrl}
-          title={mediaInfo.title}
-          downloadUrl={`/download/movie/${tmdbId}`}
+          title={mediaTitle}
+          downloadUrl={`/api/download/movies/${tmdbId}`}
           rememberPosition={true}
           rememberPositionKey={`movie-${tmdbId}`}
         />
-      )}
-    </main>
-  );
+      </main>
+    );
+  }
+
+  return null; // Caso final, embora não deva ser atingido se a lógica estiver correta
 }

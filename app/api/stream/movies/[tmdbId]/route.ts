@@ -9,10 +9,11 @@ const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
 async function getFirestoreStream(docData: any, mediaInfo: any) {
     if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
+        const firestoreUrl = docData.urls[0].url;
         const firestoreStream = {
             playerType: "custom",
-            // AQUI ESTÁ A MUDANÇA
-            url: `/api/download/movies/${docData.id}`,
+            // CORREÇÃO: O link para o player deve usar o video-proxy
+            url: `/api/video-proxy?videoUrl=${encodeURIComponent(firestoreUrl)}`,
             name: "Servidor Firebase",
         };
         return NextResponse.json({
@@ -62,8 +63,9 @@ export async function GET(
 
     try {
       const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-      const response = await fetch(roxanoUrl);
-      if (response.ok && response.headers.get('content-length') !== '0') {
+      const response = await fetch(roxanoUrl, { method: 'HEAD', redirect: 'manual' }); // Usamos HEAD para verificar a existência e tamanho
+      // Verifica se a resposta é OK e se tem conteúdo
+      if ((response.ok || response.status === 206) && Number(response.headers.get('content-length')) > 0) {
         const stream = {
           playerType: "custom",
           url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
