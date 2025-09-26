@@ -1,7 +1,11 @@
 // app/api/video-proxy/route.ts
 import { NextResponse, NextRequest } from "next/server";
 
-export const runtime = "nodejs";
+// --- MUDANÇA PRINCIPAL ---
+// Alteramos o runtime para 'edge'. A Edge Network da Vercel é otimizada
+// para streaming de dados e proxy, o que deve resolver os problemas de
+// travamento e buffering durante a reprodução do vídeo.
+export const runtime = "edge";
 
 const BLOCKED_HEADERS = new Set([
   "host", "content-length", "transfer-encoding", "connection", "keep-alive",
@@ -39,19 +43,15 @@ async function proxyOnce(videoUrl: string, headersToSend: HeadersInit) {
 }
 
 export async function GET(request: NextRequest) {
-  // --- NOSSA NOVA VERIFICAÇÃO DE SEGURANÇA ---
   const referer = request.headers.get("referer");
   const allowedReferer = process.env.ALLOWED_REFERER;
 
-  // Se a variável de ambiente estiver configurada e o referer não for o seu site...
   if (allowedReferer && (!referer || !referer.startsWith(allowedReferer))) {
-    // Retorna a sua mensagem de erro personalizada.
     return new NextResponse(
       "ops, sem permissão mn, a gente tenta disponibilizar um bglh grátis, mas vem uns fdp tentar roubar nossas urls, pode roubar mas como que tu vai usar? é nois mn",
       { status: 403, headers: { 'Content-Type': 'text/plain' } }
     );
   }
-  // --- FIM DA VERIFICAÇÃO ---
   
   const { searchParams } = new URL(request.url);
   const videoUrl = searchParams.get("videoUrl");
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
       }
       lastResponse = res;
       if (res.status === 401 || res.status === 403) continue;
-      const body = await res.text().catch(() => "");
+      // Não tente ler o body de uma resposta com erro aqui, pois pode consumir o stream
       return new NextResponse(`Falha ao carregar vídeo: ${res.status} - ${res.statusText}`, { status: res.status });
     } catch (error: any) {
       lastResponse = null;
