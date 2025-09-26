@@ -12,7 +12,6 @@ async function getFirestoreStream(docData: any, mediaInfo: any) {
         const firestoreUrl = docData.urls[0].url;
         const firestoreStream = {
             playerType: "custom",
-            // CORREÇÃO: O link para o player deve usar o video-proxy
             url: `/api/video-proxy?videoUrl=${encodeURIComponent(firestoreUrl)}`,
             name: "Servidor Firebase",
         };
@@ -61,22 +60,28 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
+    // --- CORREÇÃO: Tentar a API principal diretamente sem a verificação HEAD ---
     try {
       const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-      const response = await fetch(roxanoUrl, { method: 'HEAD', redirect: 'manual' }); // Usamos HEAD para verificar a existência e tamanho
-      // Verifica se a resposta é OK e se tem conteúdo
-      if ((response.ok || response.status === 206) && Number(response.headers.get('content-length')) > 0) {
-        const stream = {
-          playerType: "custom",
-          url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
-          name: "Servidor Principal",
-        };
-        return NextResponse.json({ streams: [stream], ...mediaInfo });
+      // Tentativa de verificar a resposta da API, mas com um timeout curto
+      const response = await fetch(roxanoUrl, { signal: AbortSignal.timeout(5000) });
+      
+      // Se a resposta for OK (mesmo com tamanho 0, o proxy pode conseguir lidar), tentamos usá-la.
+      if (response.ok) {
+          const stream = {
+              playerType: "custom",
+              url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+              name: "Servidor Principal",
+          };
+          return NextResponse.json({ streams: [stream], ...mediaInfo });
       }
+      // Se não for OK, o erro será capturado e o fallback será acionado.
+      throw new Error(`Roxano API respondeu com status: ${response.status}`);
     } catch (error) {
-      console.log("API Principal falhou, tentando fallback para o Firestore...");
+      console.log("API Principal falhou, tentando fallback para o Firestore...", error);
     }
 
+    // Se o try/catch acima falhar, ele continua para o fallback
     const firestoreFallbackResponse = await getFirestoreStream(docData, mediaInfo);
     if (firestoreFallbackResponse) return firestoreFallbackResponse;
 

@@ -16,7 +16,6 @@ async function getFirestoreStream(docData: any, season: string, episodeNum: numb
                 const firestoreUrl = episodeData.urls[0].url;
                 const firestoreStream = {
                     playerType: "custom",
-                    // CORREÇÃO: O link para o player deve usar o video-proxy
                     url: `/api/video-proxy?videoUrl=${encodeURIComponent(firestoreUrl)}`,
                     name: "Servidor Firebase",
                 };
@@ -65,21 +64,25 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
+    // --- CORREÇÃO: Tentar a API principal diretamente sem a verificação HEAD ---
     try {
       const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-      const response = await fetch(roxanoUrl, { method: 'HEAD', redirect: 'manual' });
-      if ((response.ok || response.status === 206) && Number(response.headers.get('content-length')) > 0) {
-        const stream = {
-          playerType: "custom",
-          url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
-          name: `Servidor Principal (T${season} E${episode})`,
-        };
-        return NextResponse.json({ streams: [stream], ...mediaInfo });
+      const response = await fetch(roxanoUrl, { signal: AbortSignal.timeout(5000) });
+      
+      if (response.ok) {
+          const stream = {
+              playerType: "custom",
+              url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+              name: `Servidor Principal (T${season} E${episode})`,
+          };
+          return NextResponse.json({ streams: [stream], ...mediaInfo });
       }
+      throw new Error(`Roxano API respondeu com status: ${response.status}`);
     } catch (error) {
-      console.log("API Principal de séries falhou, tentando fallback para o Firestore...");
+      console.log("API Principal de séries falhou, tentando fallback para o Firestore...", error);
     }
-
+    
+    // Se o try/catch acima falhar, ele continua para o fallback
     const firestoreFallbackResponse = await getFirestoreStream(docData, season, episodeNum, mediaInfo);
     if (firestoreFallbackResponse) return firestoreFallbackResponse;
 

@@ -59,6 +59,26 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // --- CORREÇÃO: Adicionando rotina de limpeza para o player de vídeo ---
+  useEffect(() => {
+    const videoElement = videoRef.current;
+  
+    // Esta função de retorno (cleanup) será executada quando o componente for desmontado
+    return () => {
+      if (videoElement) {
+        // Pausa o vídeo
+        videoElement.pause();
+        // Remove a fonte do vídeo para parar qualquer download em andamento
+        videoElement.removeAttribute('src');
+        // Força o navegador a carregar um "nada", o que limpa o buffer
+        videoElement.load();
+        
+        console.log("Player limpo com sucesso.");
+      }
+    };
+  }, []); // O array de dependências vazio faz com que isso rode apenas na montagem e desmontagem
+
+
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem(volumeKey)
