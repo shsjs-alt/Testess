@@ -18,50 +18,88 @@ type Stats = { movies: string; series: string; episodes: string; };
 function ApiDocsSection({ stats }: { stats: Stats }) {
     const [showDocs, setShowDocs] = useState(false);
 
-    // --- MUDANÇA: CONTEÚDO DA DOCUMENTAÇÃO ADICIONADO AQUI ---
+    // --- MUDANÇA: CONTEÚDO DA DOCUMENTAÇÃO ATUALIZADO ---
     const documentationContent = (
       <div className="text-left max-w-4xl mx-auto bg-zinc-900/50 p-6 sm:p-8 rounded-lg border border-zinc-800 backdrop-blur-sm">
-        <h2 className="text-3xl font-extrabold text-white text-center mb-2">Como Usar Nossa API</h2>
-        <p className="text-zinc-400 text-center mb-8">É muito fácil usar nosso player no seu site! Você só precisa de um link.</p>
+        <h2 className="text-3xl font-extrabold text-white text-center mb-2">Como Usar Nossas APIs</h2>
+        <p className="text-zinc-400 text-center mb-8">Temos duas APIs: uma para o Player e outra para checar a disponibilidade do conteúdo.</p>
 
         <div className="space-y-8">
+            {/* Player de Vídeo (Embed) */}
             <div>
-                <h3 className="text-2xl font-bold text-red-400 mb-3">Para Filmes</h3>
-                <p className="text-zinc-300 mb-4">A estrutura do link para filmes é super simples:</p>
-                <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
-                    {`https://SEU-DOMINIO.COM/embed/movie/{ID_DO_FILME}`}
-                </code>
-                <p className="text-sm text-zinc-500 mt-2">Troque <code className="bg-zinc-700 px-1 rounded">SEU-DOMINIO.COM</code> pelo seu site e <code className="bg-zinc-700 px-1 rounded">{`{ID_DO_FILME}`}</code> pelo ID do filme no TMDB.</p>
+                <h3 className="text-2xl font-bold text-red-400 mb-3">1. API de Player (Embed)</h3>
+                <p className="text-zinc-300 mb-4">Para exibir o nosso player no seu site, use os links de embed abaixo. É a forma mais simples e direta.</p>
                 
-                <h4 className="font-semibold text-white mt-6 mb-2">Exemplo Prático:</h4>
-                <ol className="list-decimal list-inside space-y-2 text-zinc-300">
-                    <li>Ache o ID do filme em <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">themoviedb.org</a>. Ex: "Duna: Parte Dois" tem o ID <code className="bg-zinc-700 px-1 rounded">693134</code>.</li>
-                    <li>Monte o link: <code className="bg-zinc-700 px-1 rounded text-white">https://primevicio.com/embed/movie/693134</code></li>
-                    <li>Coloque no seu site usando um iframe:</li>
-                </ol>
+                <h4 className="font-semibold text-white mt-6 mb-2">Para Filmes:</h4>
+                <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
+                    {`https://primevicio.vercel.app/embed/movie/{ID_DO_FILME}`}
+                </code>
+                 <p className="text-sm text-zinc-500 mt-2">Exemplo de iframe:</p>
                 <code className="block w-full text-left bg-zinc-800 text-sky-300 p-4 rounded-md mt-3 text-sm overflow-x-auto">
-                    {`<iframe src="https://primevicio.com/embed/movie/693134" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
+                    {`<iframe src="https://primevicio.vercel.app/embed/movie/693134" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
+                </code>
+
+                <h4 className="font-semibold text-white mt-6 mb-2">Para Séries:</h4>
+                <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
+                    {`https://primevicio.vercel.app/embed/tv/{ID_DA_SERIE}/{TEMPORADA}/{EPISODIO}`}
+                </code>
+                 <p className="text-sm text-zinc-500 mt-2">Exemplo de iframe (Fallout, T1E1):</p>
+                <code className="block w-full text-left bg-zinc-800 text-sky-300 p-4 rounded-md mt-3 text-sm overflow-x-auto">
+                    {`<iframe src="https://primevicio.vercel.app/embed/tv/106379/1/1" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
                 </code>
             </div>
 
             <div className="border-t border-zinc-800 my-8"></div>
 
+            {/* API de Conteúdo (TMDB) */}
             <div>
-                <h3 className="text-2xl font-bold text-red-400 mb-3">Para Séries</h3>
-                <p className="text-zinc-300 mb-4">Para séries, você também precisa informar a temporada e o episódio.</p>
-                <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
-                    {`https://SEU-DOMINIO.COM/embed/tv/{ID_DA_SERIE}/{TEMPORADA}/{EPISODIO}`}
-                </code>
-                <p className="text-sm text-zinc-500 mt-2">Use os números da temporada e do episódio. Ex: <code className="bg-zinc-700 px-1 rounded">/1/1</code> para T1E1.</p>
+                <h3 className="text-2xl font-bold text-red-400 mb-3">2. API de Disponibilidade</h3>
+                <p className="text-zinc-300 mb-4">Se o seu site já busca os dados do TMDB, você não precisa da nossa lista. Use esta API para checar, em tempo real, se um filme ou episódio específico está disponível no nosso player antes de exibi-lo para o seu usuário.</p>
                 
-                <h4 className="font-semibold text-white mt-6 mb-2">Exemplo Prático:</h4>
-                <ol className="list-decimal list-inside space-y-2 text-zinc-300">
-                    <li>Ache o ID da série no TMDB. Ex: "Fallout" tem o ID <code className="bg-zinc-700 px-1 rounded">106379</code>.</li>
-                    <li>Para o primeiro episódio da primeira temporada, monte o link: <code className="bg-zinc-700 px-1 rounded text-white">https://primevicio.com/embed/tv/106379/1/1</code></li>
-                    <li>Coloque no seu site:</li>
-                </ol>
-                <code className="block w-full text-left bg-zinc-800 text-sky-300 p-4 rounded-md mt-3 text-sm overflow-x-auto">
-                    {`<iframe src="https://primevicio.com/embed/tv/106379/1/1" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
+                <p className="text-zinc-400 mb-4">É simples: você faz uma chamada para o nosso endpoint. Se receber uma resposta <code className="bg-green-900/50 text-green-300 px-1.5 py-0.5 rounded">200 OK</code>, o conteúdo existe! Se receber <code className="bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">404 Not Found</code>, ele não está disponível.</p>
+
+                <h4 className="font-semibold text-white mt-6 mb-2">Verificar Filme:</h4>
+                <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
+                    {`https://primevicio.vercel.app/api/stream/movies/{ID_DO_FILME}`}
+                </code>
+                <p className="text-sm text-zinc-500 mt-2">Ex: <code className="bg-zinc-700 px-1 rounded">/api/stream/movies/693134</code></p>
+
+
+                <h4 className="font-semibold text-white mt-6 mb-2">Verificar Episódio de Série:</h4>
+                <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
+                    {`https://primevicio.vercel.app/api/stream/series/{ID_DA_SERIE}/{TEMPORADA}/{EPISODIO}`}
+                </code>
+                 <p className="text-sm text-zinc-500 mt-2">Ex: <code className="bg-zinc-700 px-1 rounded">/api/stream/series/106379/1/1</code></p>
+                
+                 <h4 className="font-semibold text-white mt-6 mb-2">Como Usar no seu Código (Exemplo em JavaScript)</h4>
+                 <p className="text-zinc-400 mb-2">
+                    Você pode criar uma função que verifica a URL e, se ela funcionar, mostra o botão "Assistir" no seu site.
+                 </p>
+                <code className="block w-full text-left bg-zinc-800 text-sky-300 p-4 rounded-md mt-3 text-sm overflow-x-auto whitespace-pre-wrap">
+{`async function checarDisponibilidade(tmdbId) {
+  const url = \`https://primevicio.vercel.app/api/stream/movies/\${tmdbId}\`;
+  try {
+    const resposta = await fetch(url);
+    if (resposta.ok) {
+      console.log('Filme disponível!');
+      // Aqui vocÃª mostra o botÃ£o de assistir no seu site
+      return true;
+    } else {
+      console.log('Filme nÃ£o disponÃ­vel.');
+      return false;
+    }
+  } catch (erro) {
+    console.error('Erro ao checar:', erro);
+    return false;
+  }
+}
+
+// Como usar:
+checarDisponibilidade('693134').then(disponivel => {
+  if (disponivel) {
+    // LÃ³gica para exibir o player
+  }
+});`}
                 </code>
             </div>
         </div>
