@@ -29,6 +29,7 @@ export default function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
+  const "continue-watching-dialog" = useRef < HTMLDivElement > (null)
 
   const [isPlaying, setIsPlaying] = useState(true)
   const [showControls, setShowControls] = useState(true)
@@ -40,29 +41,30 @@ export default function VideoPlayer({
   const [isMuted, setIsMuted] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState < string | null > (null)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [pipSupported, setPipSupported] = useState(false)
   const [isPipActive, setIsPipActive] = useState(false)
-  
-  const [hoverTime, setHoverTime] = useState<number | null>(null)
-  const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
+
+  const [hoverTime, setHoverTime] = useState < number | null > (null)
+  const [showSeekHint, setShowSeekHint] = useState < null | { dir: "fwd" | "back"; by: number } > (null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
+  const [showContinueWatching, setShowContinueWatching] = useState(false)
 
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
 
-  const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
-  const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const originalRateRef = useRef<number>(1)
-  const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
+  const lastTapRef = useRef < { time: number, side: 'left' | 'right' | 'center' } > ({ time: 0, side: 'center' });
+  const holdTimeoutRef = useRef < NodeJS.Timeout | null > (null)
+  const originalRateRef = useRef < number > (1)
+  const spacebarDownTimer = useRef < NodeJS.Timeout | null > (null);
   const isSpeedingUpRef = useRef(false);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimeoutRef = useRef < NodeJS.Timeout | null > (null);
 
   // --- CORREÇÃO: Adicionando rotina de limpeza para o player de vídeo ---
   useEffect(() => {
     const videoElement = videoRef.current;
-  
+
     // Esta função de retorno (cleanup) será executada quando o componente for desmontado
     return () => {
       if (videoElement) {
@@ -72,7 +74,7 @@ export default function VideoPlayer({
         videoElement.removeAttribute('src');
         // Força o navegador a carregar um "nada", o que limpa o buffer
         videoElement.load();
-        
+
         console.log("Player limpo com sucesso.");
       }
     };
@@ -91,9 +93,10 @@ export default function VideoPlayer({
         const savedPos = localStorage.getItem(positionKey)
         if (savedPos && videoRef.current) {
           const n = Number.parseFloat(savedPos)
-          if (!Number.isNaN(n) && n > 0) {
+          if (!Number.isNaN(n) && n > 5) {
             videoRef.current.currentTime = n
             setCurrentTime(n)
+            setShowContinueWatching(true)
           }
         }
       }
@@ -160,13 +163,13 @@ export default function VideoPlayer({
   const handleCanPlay = () => {
     setIsLoading(false)
     const v = videoRef.current;
-    if (v) {
-        v.play().then(() => {
-            setIsPlaying(true);
-        }).catch(err => {
-            console.warn("Autoplay foi impedido:", err)
-            setIsPlaying(false);
-        });
+    if (v && !showContinueWatching) {
+      v.play().then(() => {
+        setIsPlaying(true);
+      }).catch(err => {
+        console.warn("Autoplay foi impedido:", err)
+        setIsPlaying(false);
+      });
     }
   }
   const handleError = () => {
@@ -184,7 +187,7 @@ export default function VideoPlayer({
         const end = buf.end(buf.length - 1)
         setBufferedEnd(end)
       }
-    } catch {}
+    } catch { }
   }
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return
@@ -201,7 +204,7 @@ export default function VideoPlayer({
     }
     setIsPlaying(!v.paused)
   }, [])
-  
+
   const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ('ontouchstart' in window) return;
     if ((e.target as HTMLElement).closest('[data-controls]')) return;
@@ -244,9 +247,9 @@ export default function VideoPlayer({
     setIsMuted(newVolume === 0)
     try {
       localStorage.setItem(volumeKey, String(newVolume))
-    } catch {}
+    } catch { }
   }
-  
+
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
     if (!container) return;
@@ -327,21 +330,29 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return
-      
+      const activeElement = document.activeElement
+      if (
+        activeElement &&
+        (activeElement.tagName === "INPUT" ||
+          activeElement.tagName === "TEXTAREA" ||
+          activeElement.getAttribute("role") === "slider")
+      ) {
+        return
+      }
+
       if (e.key === ' ' && !e.repeat) {
-          e.preventDefault()
-          if (!isPlaying || isSpeedingUpRef.current) return
-          
-          spacebarDownTimer.current = setTimeout(() => {
-            if (videoRef.current && isPlaying) {
-                isSpeedingUpRef.current = true;
-                originalRateRef.current = videoRef.current.playbackRate;
-                videoRef.current.playbackRate = 2.0;
-                setPlaybackRate(2.0);
-                setShowSpeedHint(true);
-            }
-          }, 200);
+        e.preventDefault()
+        if (!isPlaying || isSpeedingUpRef.current) return
+
+        spacebarDownTimer.current = setTimeout(() => {
+          if (videoRef.current && isPlaying) {
+            isSpeedingUpRef.current = true;
+            originalRateRef.current = videoRef.current.playbackRate;
+            videoRef.current.playbackRate = 2.0;
+            setPlaybackRate(2.0);
+            setShowSpeedHint(true);
+          }
+        }, 200);
       }
 
       switch (e.key.toLowerCase()) {
@@ -355,34 +366,34 @@ export default function VideoPlayer({
         case "arrowdown": e.preventDefault(); handleVolumeChange([Math.max(0, volume - 0.1)]); break
       }
     }
-    
+
     const onKeyUp = (e: KeyboardEvent) => {
-        if (e.key === ' ') {
-            e.preventDefault()
-            if (spacebarDownTimer.current) {
-                clearTimeout(spacebarDownTimer.current);
-                spacebarDownTimer.current = null;
-                if (!isSpeedingUpRef.current) {
-                    togglePlay();
-                }
-            }
-            if (isSpeedingUpRef.current) {
-                if (videoRef.current) {
-                    videoRef.current.playbackRate = originalRateRef.current;
-                }
-                setPlaybackRate(originalRateRef.current);
-                setShowSpeedHint(false);
-                isSpeedingUpRef.current = false;
-            }
+      if (e.key === ' ') {
+        e.preventDefault()
+        if (spacebarDownTimer.current) {
+          clearTimeout(spacebarDownTimer.current);
+          spacebarDownTimer.current = null;
+          if (!isSpeedingUpRef.current) {
+            togglePlay();
+          }
         }
+        if (isSpeedingUpRef.current) {
+          if (videoRef.current) {
+            videoRef.current.playbackRate = originalRateRef.current;
+          }
+          setPlaybackRate(originalRateRef.current);
+          setShowSpeedHint(false);
+          isSpeedingUpRef.current = false;
+        }
+      }
     };
 
     window.addEventListener("keydown", onKeyDown)
     window.addEventListener("keyup", onKeyUp);
     return () => {
-        window.removeEventListener("keydown", onKeyDown)
-        window.removeEventListener("keyup", onKeyUp);
-        if (spacebarDownTimer.current) clearTimeout(spacebarDownTimer.current);
+      window.removeEventListener("keydown", onKeyDown)
+      window.removeEventListener("keyup", onKeyUp);
+      if (spacebarDownTimer.current) clearTimeout(spacebarDownTimer.current);
     }
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
 
@@ -397,7 +408,7 @@ export default function VideoPlayer({
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current.time < 350 && lastTapRef.current.side === side;
-  
+
     if (isDoubleTap) {
       if (side === 'left') seek(-10);
       if (side === 'right') seek(10);
@@ -410,7 +421,7 @@ export default function VideoPlayer({
       lastTapRef.current = { time: now, side };
     }
   };
-  
+
   const handleTouchStart = () => {
     holdTimeoutRef.current = setTimeout(() => {
       if (videoRef.current && isPlaying) {
@@ -420,7 +431,7 @@ export default function VideoPlayer({
       }
     }, 500)
   }
-  
+
   const handleTouchEnd = () => {
     if (holdTimeoutRef.current) {
       clearTimeout(holdTimeoutRef.current)
@@ -429,6 +440,21 @@ export default function VideoPlayer({
     if (videoRef.current && videoRef.current.playbackRate === 2) {
       videoRef.current.playbackRate = originalRateRef.current
       setShowSpeedHint(false)
+    }
+  }
+
+  const handleContinue = () => {
+    setShowContinueWatching(false)
+    if (videoRef.current) {
+      videoRef.current.play()
+    }
+  }
+
+  const handleRestart = () => {
+    setShowContinueWatching(false)
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0
+      videoRef.current.play()
     }
   }
 
@@ -467,8 +493,8 @@ export default function VideoPlayer({
           autoPlay
           playsInline
         />
-        
-        <div 
+
+        <div
           className="absolute inset-0 z-0"
           onClick={handleMainClick}
         />
@@ -513,6 +539,19 @@ export default function VideoPlayer({
           </button>
         )}
 
+        {showContinueWatching && (
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70"
+            ref={"continue-watching-dialog"}
+          >
+            <p className="text-white text-lg mb-4">Deseja continuar assistindo de onde parou?</p>
+            <div className="flex gap-4">
+              <Button onClick={handleContinue} className="bg-white text-black">Sim</Button>
+              <Button onClick={handleRestart} variant="secondary">Recomeçar</Button>
+            </div>
+          </div>
+        )}
+
         {showSeekHint && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             <div className="rounded-full bg-black/60 px-3 py-1 text-sm text-white ring-1 ring-white/10">
@@ -520,20 +559,20 @@ export default function VideoPlayer({
             </div>
           </div>
         )}
-        
+
         <AnimatePresence>
-            {showSpeedHint && (
-                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
-                 >
-                    <div className="rounded-full bg-black/60 px-4 py-2 text-lg font-bold text-white ring-1 ring-white/10">
-                        2x
-                    </div>
-                 </motion.div>
-            )}
+          {showSpeedHint && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+            >
+              <div className="rounded-full bg-black/60 px-4 py-2 text-lg font-bold text-white ring-1 ring-white/10">
+                2x
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         <div className="absolute inset-0 z-0 flex md:hidden">
