@@ -14,13 +14,11 @@ const API_KEY = "860b66ade580bacae581f4228fad49fc";
 const API_BASE_URL = "https://api.themoviedb.org/3";
 
 // --- MUDANÇA ---
-// Definimos o tipo para as estatísticas
-type Stats = { movies: number; series: number; episodes: number; };
+// O tipo para as estatísticas agora é string
+type Stats = { movies: string; series: string; episodes: string; };
 
 function ApiDocsSection({ stats }: { stats: Stats }) {
     const [showDocs, setShowDocs] = useState(false);
-    // Função para formatar números grandes (ex: 22000 vira "22.000")
-    const formatNumber = (num: number) => new Intl.NumberFormat('pt-BR').format(num);
 
     return (
         <section className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-10 -mt-24">
@@ -43,10 +41,22 @@ function ApiDocsSection({ stats }: { stats: Stats }) {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 {/* --- MUDANÇA --- */}
-                                {/* Os números agora são puxados diretamente do estado com os valores que você pediu */}
-                                <Card className="bg-zinc-900/80 border-zinc-800 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats.movies)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Filmes</p></CardContent></Card>
-                                <Card className="bg-zinc-900/80 border-zinc-800 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats.series)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Séries</p></CardContent></Card>
-                                <Card className="bg-zinc-900/80 border-zinc-800 col-span-2 text-center"><CardHeader><CardTitle className="text-2xl text-white">{formatNumber(stats.episodes)}</CardTitle></CardHeader><CardContent><p className="text-sm text-zinc-400">Episódios</p></CardContent></Card>
+                                {/* Os textos agora são puxados diretamente do estado e o conteúdo foi centralizado */}
+                                <Card className="bg-zinc-900/80 border-zinc-800 text-center flex items-center justify-center p-4 h-24">
+                                    <CardHeader className="p-0">
+                                        <CardTitle className="text-xl text-white">{stats.movies}</CardTitle>
+                                    </CardHeader>
+                                </Card>
+                                <Card className="bg-zinc-900/80 border-zinc-800 text-center flex items-center justify-center p-4 h-24">
+                                    <CardHeader className="p-0">
+                                        <CardTitle className="text-xl text-white">{stats.series}</CardTitle>
+                                    </CardHeader>
+                                </Card>
+                                <Card className="bg-zinc-900/80 border-zinc-800 col-span-2 text-center flex items-center justify-center p-4 h-24">
+                                    <CardHeader className="p-0">
+                                        <CardTitle className="text-xl text-white">{stats.episodes}</CardTitle>
+                                    </CardHeader>
+                                </Card>
                             </div>
                         </div>
                     </motion.div>
@@ -62,17 +72,16 @@ export default function HomePage() {
   const [heroBackdrop, setHeroBackdrop] = useState<string | null>(null);
   
   // --- MUDANÇA PRINCIPAL ---
-  // Removemos a busca de estatísticas do Firebase e colocamos os valores fixos que você solicitou.
+  // O estado agora usa as strings exatas que você solicitou.
   const [stats] = useState<Stats>({
-      movies: 22000,
-      series: 6000,
-      episodes: 240000,
+      movies: "+ de 23,535 Filmes",
+      series: "+ de 6,963 Séries",
+      episodes: "+ de 243,273 Episódios",
   });
   
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
 
-  // O resto do código permanece o mesmo, pois ele busca os filmes populares do TMDB, o que está correto.
   const fetchMedia = useCallback(async (page: number) => {
     setLoading(true);
     try {
