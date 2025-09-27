@@ -1,25 +1,29 @@
 // app/api/stream/series/[...params]/route.ts
 import { NextResponse } from "next/server";
 import { firestore } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, DocumentSnapshot } from "firebase/firestore";
 
 const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-async function getFirestoreStream(docData: any, season: string, episodeNum: number, mediaInfo: any) {
-    if (docData) {
-        const seasonData = docData.seasons?.[season];
-        if (seasonData && Array.isArray(seasonData.episodes)) {
-            const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
-            if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
-                const firestoreUrl = episodeData.urls[0].url;
-                const firestoreStream = {
-                    playerType: "custom",
-                    url: `/api/video-proxy?videoUrl=${encodeURIComponent(firestoreUrl)}`,
-                    name: "Servidor Firebase",
-                };
-                return NextResponse.json({ streams: [firestoreStream], ...mediaInfo });
+// Helper para obter o stream do Firestore. Retorna um objeto de resposta ou null.
+async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
+    if (docSnap.exists()) {
+        const docData = docSnap.data();
+        if (docData) {
+            const seasonData = docData.seasons?.[season];
+            if (seasonData && Array.isArray(seasonData.episodes)) {
+                const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
+                if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
+                    const firestoreUrl = episodeData.urls[0].url;
+                    const firestoreStream = {
+                        playerType: "custom",
+                        url: `/api/video-proxy?videoUrl=${encodeURIComponent(firestoreUrl)}`,
+                        name: "Servidor Firebase",
+                    };
+                    return NextResponse.json({ streams: [firestoreStream], ...mediaInfo });
+                }
             }
         }
     }
@@ -34,11 +38,10 @@ export async function GET(
   { params }: { params: { params: string[] } }
 ) {
   const [tmdbId, season, episode] = params.params;
-  const seasonNum = parseInt(season, 10);
   const episodeNum = parseInt(episode, 10);
 
-  if (!tmdbId || isNaN(seasonNum) || isNaN(episodeNum)) {
-    return NextResponse.json({ error: "TMDB ID, temporada e episódio são necessários." }, { status: 400 });
+  if (!tmdbId || !season || isNaN(episodeNum)) {
+    return NextResponse.json({ error: "ID, temporada e episódio são necessários." }, { status: 400 });
   }
 
   try {
@@ -57,30 +60,32 @@ export async function GET(
       console.warn("API de Séries: Não foi possível buscar informações do TMDB para a série:", tmdbId, tmdbError);
     }
     
-    // Inicia as duas buscas em paralelo
+    // Inicia a busca no Firestore em paralelo
     const docRef = doc(firestore, "media", tmdbId);
     const firestorePromise = getDoc(docRef);
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-    const roxanoPromise = fetch(roxanoUrl);
     
     // Aguarda o Firestore, pois precisamos do docData para a lógica de 'force' e fallback
     const docSnap = await firestorePromise;
-    const docData = docSnap.exists() ? docSnap.data() : null;
-
-    if (docData?.forceFirestore === true) {
-        const firestoreResponse = await getFirestoreStream(docData, season, episodeNum, mediaInfo);
+    
+    // 1. Lógica de 'forceFirestore'
+    if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
+        console.log(`[Série ${tmdbId}] Forçando o uso do Firestore.`);
+        const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
         if (firestoreResponse) return firestoreResponse;
+        // Se forçado, mas não encontrado, retorna erro. Não tenta o fallback.
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
+    // 2. Tenta a API Principal (Roxano) com timeout
+    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
     try {
-        // Tenta a API principal, mas com um timeout de 3 segundos
         const roxanoResponse = await Promise.race([
-            roxanoPromise,
-            timeout(3000)
+            fetch(roxanoUrl),
+            timeout(4000) // Timeout de 4 segundos
         ]) as Response;
       
         if (roxanoResponse.ok) {
+            console.log(`[Série ${tmdbId}] Sucesso com a API Principal (Roxano) para S${season}E${episode}.`);
             const stream = {
                 playerType: "custom",
                 url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
@@ -88,18 +93,24 @@ export async function GET(
             };
             return NextResponse.json({ streams: [stream], ...mediaInfo });
         }
-        throw new Error(`Roxano API respondeu com status: ${roxanoResponse.status}`);
+        // Se a resposta não for OK, lança um erro para acionar o bloco catch e tentar o fallback.
+        throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
     } catch (error) {
-        console.log("API Principal de séries falhou ou demorou, tentando fallback para o Firestore...", error);
-        // Se a API principal falhar ou demorar, usa o resultado do Firestore (que já foi buscado)
-        const firestoreFallbackResponse = await getFirestoreStream(docData, season, episodeNum, mediaInfo);
-        if (firestoreFallbackResponse) return firestoreFallbackResponse;
+        // 3. Fallback para o Firestore se a API Principal falhar
+        console.log(`[Série ${tmdbId}] API Principal falhou ou demorou para S${season}E${episode}. Tentando fallback para o Firestore...`, error);
+        const firestoreFallbackResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
+        if (firestoreFallbackResponse) {
+            console.log(`[Série ${tmdbId}] Sucesso com o fallback do Firestore para S${season}E${episode}.`);
+            return firestoreFallbackResponse;
+        }
     }
 
+    // 4. Se ambas as fontes falharem
+    console.log(`[Série ${tmdbId}] Nenhuma fonte de stream disponível para S${season}E${episode}.`);
     return NextResponse.json({ error: "Nenhum stream disponível para este episódio." }, { status: 404 });
 
   } catch (error) {
-    console.error(`Erro ao buscar streams para a série ${tmdbId} S${season}E${episode}:`, error);
+    console.error(`[Série ${tmdbId}] Erro geral ao buscar streams para S${season}E${episode}:`, error);
     return NextResponse.json({ error: "Falha ao buscar streams" }, { status: 500 });
   }
 }

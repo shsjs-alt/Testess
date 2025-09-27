@@ -7,7 +7,7 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-// Função para obter o stream do Firestore a partir de um DocumentSnapshot
+// Helper para obter o stream do Firestore. Retorna um objeto de resposta ou null.
 async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     if (docSnap.exists()) {
         const docData = docSnap.data();
@@ -27,26 +27,8 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     return null;
 }
 
-// Função para tentar buscar da API principal (Roxano)
-async function getRoxanoStream(tmdbId: string, mediaInfo: any) {
-    try {
-        const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-        const response = await fetch(roxanoUrl, { signal: AbortSignal.timeout(4000) }); // Timeout de 4s
-
-        if (response.ok) {
-            const stream = {
-                playerType: "custom",
-                url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
-                name: "Servidor Principal",
-            };
-            return NextResponse.json({ streams: [stream], ...mediaInfo });
-        }
-        return null; // Retorna nulo se a resposta não for OK
-    } catch (error) {
-        console.log("API Principal (Roxano) falhou ou demorou:", error);
-        return null; // Retorna nulo em caso de erro ou timeout
-    }
-}
+// Helper para criar uma promessa que rejeita após um timeout
+const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
 
 
 export async function GET(
@@ -76,37 +58,58 @@ export async function GET(
       console.warn("API de Filmes: Não foi possível buscar informações do TMDB para o filme:", tmdbId, tmdbError);
     }
 
-    // Inicia a busca no Firestore
+    // Inicia a busca no Firestore em paralelo com a tentativa da API principal
     const docRef = doc(firestore, "media", tmdbId);
     const firestorePromise = getDoc(docRef);
 
-    // Lógica para 'forceFirestore'
+    // Aguarda o Firestore, pois precisamos do docData para a lógica de 'force' e fallback
     const docSnap = await firestorePromise;
     const docData = docSnap.exists() ? docSnap.data() : null;
+    
+    // 1. Lógica de 'forceFirestore'
     if (docData?.forceFirestore === true) {
+        console.log(`[Filme ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
         if (firestoreResponse) return firestoreResponse;
+        // Se forçado, mas não encontrado, retorna erro. Não tenta o fallback.
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // Dispara as duas fontes de dados em paralelo
-    const roxanoPromise = getRoxanoStream(tmdbId, mediaInfo);
-    // Reutiliza o resultado já buscado do firestorePromise
-    const firestoreStreamPromise = getFirestoreStream(docSnap, mediaInfo);
+    // 2. Tenta a API Principal (Roxano) com timeout
+    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+    try {
+        const roxanoResponse = await Promise.race([
+            fetch(roxanoUrl),
+            timeout(4000) // Timeout de 4 segundos
+        ]) as Response;
 
-    // Espera pela primeira resposta válida
-    const firstValidResponse = await Promise.any([roxanoPromise, firestoreStreamPromise].filter(p => p));
-    
-    if(firstValidResponse) {
-        return firstValidResponse;
+        if (roxanoResponse.ok) {
+            console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano).`);
+            const stream = {
+                playerType: "custom",
+                url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+                name: "Servidor Principal",
+            };
+            return NextResponse.json({ streams: [stream], ...mediaInfo });
+        }
+        // Se a resposta não for OK, lança um erro para acionar o bloco catch e tentar o fallback.
+        throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
+    } catch (error) {
+        // 3. Fallback para o Firestore se a API Principal falhar
+        console.log(`[Filme ${tmdbId}] API Principal falhou ou demorou. Tentando fallback para o Firestore...`, error);
+        const firestoreFallbackResponse = await getFirestoreStream(docSnap, mediaInfo);
+        if (firestoreFallbackResponse) {
+            console.log(`[Filme ${tmdbId}] Sucesso com o fallback do Firestore.`);
+            return firestoreFallbackResponse;
+        }
     }
 
-    // Se ambas as promessas resultarem em nulo ou forem rejeitadas
+    // 4. Se ambas as fontes falharem
+    console.log(`[Filme ${tmdbId}] Nenhuma fonte de stream disponível.`);
     return NextResponse.json({ error: "Nenhum stream disponível para este filme." }, { status: 404 });
 
   } catch (error) {
-    // O Promise.any lança um AggregateError se todas as promessas forem rejeitadas
-    console.error(`Erro ao buscar streams para o filme ${tmdbId} em todas as fontes:`, error);
+    console.error(`[Filme ${tmdbId}] Erro geral ao buscar streams em todas as fontes:`, error);
     return NextResponse.json({ error: "Falha ao buscar streams" }, { status: 500 });
   }
 }
