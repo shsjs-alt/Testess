@@ -27,6 +27,8 @@ export default function VideoPlayer({
   rememberPosition = true,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
@@ -50,6 +52,9 @@ export default function VideoPlayer({
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
+  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+  const [thumbnails, setThumbnails] = useState<string[]>([]);
+  const previewIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
@@ -60,25 +65,24 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const seekThrottleTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // --- CORREÇÃO: Adicionando rotina de limpeza para o player de vídeo ---
   useEffect(() => {
     const videoElement = videoRef.current;
-
-    // Esta função de retorno (cleanup) será executada quando o componente for desmontado
+    const thumbnailVideoElement = thumbnailVideoRef.current;
     return () => {
       if (videoElement) {
-        // Pausa o vídeo
         videoElement.pause();
-        // Remove a fonte do vídeo para parar qualquer download em andamento
         videoElement.removeAttribute('src');
-        // Força o navegador a carregar um "nada", o que limpa o buffer
         videoElement.load();
-
-        console.log("Player limpo com sucesso.");
+      }
+      if (thumbnailVideoElement) {
+        thumbnailVideoElement.pause();
+        thumbnailVideoElement.removeAttribute('src');
+        thumbnailVideoElement.load();
       }
     };
-  }, []); // O array de dependências vazio faz com que isso rode apenas na montagem e desmontagem
+  }, []);
 
 
   useEffect(() => {
@@ -93,7 +97,7 @@ export default function VideoPlayer({
         const savedPos = localStorage.getItem(positionKey)
         if (savedPos && videoRef.current) {
           const n = Number.parseFloat(savedPos)
-          if (!Number.isNaN(n) && n > 5) { // Só mostra o prompt se tiver assistido mais de 5 segundos
+          if (!Number.isNaN(n) && n > 5) {
             videoRef.current.currentTime = n
             setCurrentTime(n)
             setShowContinueWatching(true)
@@ -192,7 +196,39 @@ export default function VideoPlayer({
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return
     setDuration(videoRef.current.duration || 0)
+    generateThumbnails();
   }
+
+  const generateThumbnails = useCallback(async () => {
+    const video = thumbnailVideoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || isGeneratingThumbnails || thumbnails.length > 0) return;
+
+    setIsGeneratingThumbnails(true);
+
+    const capturedThumbnails: string[] = [];
+    const interval = (video.duration || 0) / 20;
+
+    for (let i = 0; i < 20; i++) {
+      video.currentTime = i * interval;
+      await new Promise(resolve => {
+        const onSeeked = () => {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            capturedThumbnails.push(canvas.toDataURL('image/jpeg'));
+          }
+          video.removeEventListener('seeked', onSeeked);
+          resolve(null);
+        };
+        video.addEventListener('seeked', onSeeked);
+      });
+    }
+
+    setThumbnails(capturedThumbnails);
+    setIsGeneratingThumbnails(false);
+  }, [isGeneratingThumbnails, thumbnails]);
+
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current
@@ -398,12 +434,40 @@ export default function VideoPlayer({
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!duration) return
-    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
-    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-    setHoverTime(duration * pct)
-  }
-  const onProgressLeave = () => setHoverTime(null)
+    if (!duration || !progressWrapRef.current) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const time = duration * pct;
+    setHoverTime(time);
+
+    if (previewIntervalRef.current) clearInterval(previewIntervalRef.current);
+
+    let currentThumb = 0;
+    previewIntervalRef.current = setInterval(() => {
+      const thumbnailIndex = Math.floor(pct * thumbnails.length) + currentThumb;
+      if (thumbnails[thumbnailIndex]) {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (ctx && canvas) {
+          const img = new Image();
+          img.src = thumbnails[thumbnailIndex % thumbnails.length];
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+        }
+      }
+      currentThumb = (currentThumb + 1) % 3; // a few frames
+    }, 200); // Change frame every 200ms
+  };
+
+
+  const onProgressLeave = () => {
+    setHoverTime(null);
+    if (previewIntervalRef.current) {
+      clearInterval(previewIntervalRef.current);
+    }
+  };
 
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
     const now = Date.now();
@@ -412,12 +476,12 @@ export default function VideoPlayer({
     if (isDoubleTap) {
       if (side === 'left') seek(-10);
       if (side === 'right') seek(10);
-      lastTapRef.current = { time: 0, side: 'center' }; // Reset after double tap
+      lastTapRef.current = { time: 0, side: 'center' };
     } else if (side === 'center') {
       togglePlay();
       lastTapRef.current = { time: now, side };
     } else {
-      resetControlsTimeout(); // Single tap on sides just shows controls
+      resetControlsTimeout();
       lastTapRef.current = { time: now, side };
     }
   };
@@ -465,6 +529,22 @@ export default function VideoPlayer({
       ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
       : 0
 
+  useEffect(() => {
+    const thumbnailVideo = thumbnailVideoRef.current;
+    const canvas = canvasRef.current;
+    if (!thumbnailVideo || !canvas) return;
+
+    const onSeeked = () => {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        ctx.drawImage(thumbnailVideo, 0, 0, canvas.width, canvas.height);
+      }
+    };
+
+    thumbnailVideo.addEventListener("seeked", onSeeked);
+    return () => thumbnailVideo.removeEventListener("seeked", onSeeked);
+  }, []);
+
   return (
     <TooltipProvider delayDuration={150}>
       <div
@@ -493,6 +573,8 @@ export default function VideoPlayer({
           autoPlay
           playsInline
         />
+
+        <video ref={thumbnailVideoRef} src={src} className="absolute -z-10 h-0 w-0" muted crossOrigin="anonymous" preload="metadata" />
 
         <div
           className="absolute inset-0 z-0"
@@ -584,52 +666,47 @@ export default function VideoPlayer({
         <div
           data-controls
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3 md:p-4 transition-opacity duration-300",
-            "bg-gradient-to-t from-black/80 via-black/20 to-transparent",
+            "pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 md:p-3 transition-opacity duration-300",
+            "bg-gradient-to-t from-black/50 to-transparent",
             showControls ? "opacity-100" : "opacity-0",
           )}
         >
           <div
             ref={progressWrapRef}
-            className="pointer-events-auto relative mb-2"
             onMouseMove={onProgressMouseMove}
             onMouseLeave={onProgressLeave}
+            className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
-            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-white/10" />
             <div
-              className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded bg-white/20"
+              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded border border-white/20 bg-black text-[10px] text-white ring-1 ring-white/10 md:block"
               style={{
-                width: duration > 0 ? `${(Math.min(bufferedEnd, duration) / duration) * 100}%` : "0%",
+                left: hoverLeft,
+                visibility: hoverTime !== null ? 'visible' : 'hidden',
+                width: 160,
+                height: 90
               }}
-            />
+            >
+                <canvas ref={canvasRef} className="h-full w-full" width={160} height={90} />
+                <div className="absolute bottom-1 right-1 bg-black/50 px-1 py-0.5 text-xs rounded">
+                    {formatTime(hoverTime ?? 0)}
+                </div>
+            </div>
+
             <Slider
               value={[Math.min(currentTime, duration || 0)]}
               max={duration || 100}
               step={1}
               onValueChange={handleSeekSlider}
-              className="relative h-1"
+              className="relative h-1.5 transition-all duration-200 group-hover/progress:h-2"
             />
-            <div className="mt-1.5 flex select-none justify-between text-[11px] text-white/80">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-
-            {hoverTime !== null && duration > 0 && (
-              <div
-                className="pointer-events-none absolute -top-7 hidden md:block translate-x-[-50%] rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white ring-1 ring-white/10"
-                style={{ left: hoverLeft }}
-              >
-                {formatTime(hoverTime)}
-              </div>
-            )}
           </div>
 
-          <div className="pointer-events-auto flex items-center justify-between">
+          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-[#212121] px-2 py-2">
             <div className="flex items-center gap-1 md:gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                    {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                    {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{isPlaying ? "Pausar (K)" : "Reproduzir (K)"}</TooltipContent>
@@ -637,8 +714,8 @@ export default function VideoPlayer({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={() => seek(-10)} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                    <Rewind className="h-5 w-5" />
+                  <Button onClick={() => seek(-10)} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                    <Rewind className="h-6 w-6" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>-10s (←)</TooltipContent>
@@ -646,8 +723,8 @@ export default function VideoPlayer({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={() => seek(10)} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                    <FastForward className="h-5 w-5" />
+                  <Button onClick={() => seek(10)} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                    <FastForward className="h-6 w-6" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>+10s (→)</TooltipContent>
@@ -656,8 +733,8 @@ export default function VideoPlayer({
               <div className="flex items-center gap-2 group/vol">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                      {isMuted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                    <Button onClick={toggleMute} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                      {isMuted || volume === 0 ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Mudo (M)</TooltipContent>
@@ -665,6 +742,11 @@ export default function VideoPlayer({
                 <div className="w-0 overflow-hidden transition-all duration-300 group-hover/vol:w-24 md:w-0 md:group-hover/vol:w-24">
                   <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
                 </div>
+              </div>
+              <div className="hidden select-none justify-between text-sm text-white/80 md:flex items-center gap-1.5">
+                <span>{formatTime(currentTime)}</span>
+                <span>/</span>
+                <span>{formatTime(duration)}</span>
               </div>
             </div>
 
@@ -677,8 +759,8 @@ export default function VideoPlayer({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <a href={downloadUrl} download>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                        <Download className="h-5 w-5" />
+                      <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                        <Download className="h-6 w-6" />
                       </Button>
                     </a>
                   </TooltipTrigger>
@@ -689,8 +771,8 @@ export default function VideoPlayer({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <PopoverTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                        <Settings className="h-5 w-5" />
+                      <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                        <Settings className="h-6 w-6" />
                       </Button>
                     </PopoverTrigger>
                   </TooltipTrigger>
@@ -716,8 +798,8 @@ export default function VideoPlayer({
               {pipSupported && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                      <PictureInPicture className={cn("h-5 w-5", isPipActive && "text-red-400")} />
+                    <Button onClick={togglePip} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                      <PictureInPicture className={cn("h-6 w-6", isPipActive && "text-red-400")} />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Picture-in-Picture (P)</TooltipContent>
@@ -726,8 +808,8 @@ export default function VideoPlayer({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                    {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+                  <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                    {isFullscreen ? <Minimize className="h-6 w-6" /> : <Maximize className="h-6 w-6" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Tela cheia (F)</TooltipContent>
@@ -736,8 +818,8 @@ export default function VideoPlayer({
               {onClose && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 text-white hover:bg-white/15">
-                      <X className="h-5 w-5" />
+                    <Button onClick={onClose} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                      <X className="h-6 w-6" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Fechar</TooltipContent>
