@@ -27,8 +27,6 @@ export default function VideoPlayer({
   rememberPosition = true,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
@@ -52,9 +50,7 @@ export default function VideoPlayer({
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
-  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
-  const [thumbnails, setThumbnails] = useState<string[]>([]);
-  
+
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
 
@@ -64,20 +60,14 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   useEffect(() => {
     const videoElement = videoRef.current;
-    const thumbnailVideoElement = thumbnailVideoRef.current;
     return () => {
       if (videoElement) {
         videoElement.pause();
         videoElement.removeAttribute('src');
         videoElement.load();
-      }
-      if (thumbnailVideoElement) {
-        thumbnailVideoElement.pause();
-        thumbnailVideoElement.removeAttribute('src');
-        thumbnailVideoElement.load();
       }
     };
   }, []);
@@ -194,41 +184,7 @@ export default function VideoPlayer({
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return
     setDuration(videoRef.current.duration || 0)
-    generateThumbnails();
   }
-
-  const generateThumbnails = useCallback(async () => {
-    const video = thumbnailVideoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || isGeneratingThumbnails || thumbnails.length > 0 || !video.duration) return;
-
-    setIsGeneratingThumbnails(true);
-    console.log("Iniciando geração de miniaturas...");
-
-    const capturedThumbnails: string[] = [];
-    const interval = video.duration / 20; // Gerar 20 miniaturas
-
-    for (let i = 0; i < 20; i++) {
-      video.currentTime = i * interval;
-      await new Promise<void>(resolve => {
-        const onSeeked = () => {
-          video.removeEventListener('seeked', onSeeked);
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            capturedThumbnails.push(canvas.toDataURL('image/jpeg'));
-          }
-          resolve();
-        };
-        video.addEventListener('seeked', onSeeked);
-      });
-    }
-
-    setThumbnails(capturedThumbnails);
-    setIsGeneratingThumbnails(false);
-    console.log("Miniaturas geradas com sucesso:", capturedThumbnails.length);
-  }, [isGeneratingThumbnails, thumbnails]);
-
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current
@@ -434,28 +390,12 @@ export default function VideoPlayer({
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!duration || thumbnails.length === 0 || !progressWrapRef.current || !canvasRef.current) return;
-  
+    if (!duration || !progressWrapRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
-  
-    const thumbnailIndex = Math.min(Math.floor(pct * thumbnails.length), thumbnails.length - 1);
-    const imgSrc = thumbnails[thumbnailIndex];
-  
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (ctx && imgSrc) {
-      const img = new Image();
-      img.src = imgSrc;
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpa o canvas antes de desenhar
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      };
-    }
   };
-
 
   const onProgressLeave = () => {
     setHoverTime(null);
@@ -520,6 +460,8 @@ export default function VideoPlayer({
     hoverTime !== null && duration > 0 && progressWrapRef.current
       ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
       : 0
+  
+  const bufferPercentage = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -549,8 +491,6 @@ export default function VideoPlayer({
           autoPlay
           playsInline
         />
-
-        <video ref={thumbnailVideoRef} src={src} className="absolute -z-10 h-0 w-0" muted crossOrigin="anonymous" preload="metadata" />
 
         <div
           className="absolute inset-0 z-0"
@@ -653,28 +593,39 @@ export default function VideoPlayer({
             onMouseLeave={onProgressLeave}
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
-            <div
-              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded border border-white/20 bg-black text-[10px] text-white ring-1 ring-white/10 md:block"
+             <div
+              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
               style={{
                 left: hoverLeft,
                 visibility: hoverTime !== null ? 'visible' : 'hidden',
-                width: 160,
-                height: 90
               }}
             >
-                <canvas ref={canvasRef} className="h-full w-full" width={160} height={90} />
-                <div className="absolute bottom-1 right-1 bg-black/50 px-1 py-0.5 text-xs rounded">
-                    {formatTime(hoverTime ?? 0)}
-                </div>
+                {formatTime(hoverTime ?? 0)}
             </div>
-
-            <Slider
-              value={[Math.min(currentTime, duration || 0)]}
-              max={duration || 100}
-              step={1}
-              onValueChange={handleSeekSlider}
-              className="relative h-1.5 transition-all duration-200 group-hover/progress:h-2"
-            />
+            
+            <div className="relative flex items-center h-1.5 group-hover/progress:h-3 transition-[height] duration-200">
+                <div
+                    className="absolute top-1/2 -translate-y-1/2 h-full w-full bg-white/20 rounded-full"
+                    style={{
+                        backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent 4px, rgba(0,0,0,0.4) 4px, rgba(0,0,0,0.4) 5px)`,
+                        backgroundSize: `1% 100%`,
+                    }}
+                />
+                <div
+                    className="absolute top-1/2 -translate-y-1/2 h-full bg-white/40 rounded-full"
+                    style={{ width: `${bufferPercentage}%` }}
+                />
+                <Slider
+                    value={[Math.min(currentTime, duration || 0)]}
+                    max={duration || 100}
+                    step={0.1}
+                    onValueChange={handleSeekSlider}
+                    className="absolute w-full inset-0"
+                    trackClassName="bg-transparent"
+                    rangeClassName="bg-red-600"
+                    thumbClassName="bg-red-600 border-red-600 h-3 w-3 group-hover/progress:h-5 group-hover/progress:w-5 transition-all"
+                />
+            </div>
           </div>
 
           <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-[#212121] px-2 py-2">
@@ -734,7 +685,7 @@ export default function VideoPlayer({
               {downloadUrl && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <a href={downloadUrl} download>
+                    <a href={downloadUrl}>
                       <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
                         <Download className="h-6 w-6" />
                       </Button>
