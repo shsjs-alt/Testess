@@ -459,8 +459,8 @@ export default function VideoPlayer({
   const hoverLeft =
     hoverTime !== null && duration > 0 && progressWrapRef.current
       ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
-      : 0
-  
+      : 0;
+
   const bufferPercentage = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
 
   return (
@@ -593,7 +593,7 @@ export default function VideoPlayer({
             onMouseLeave={onProgressLeave}
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
-             <div
+            <div
               className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
               style={{
                 left: hoverLeft,
@@ -603,29 +603,14 @@ export default function VideoPlayer({
                 {formatTime(hoverTime ?? 0)}
             </div>
             
-            <div className="relative flex items-center h-1.5 group-hover/progress:h-3 transition-[height] duration-200">
-                <div
-                    className="absolute top-1/2 -translate-y-1/2 h-full w-full bg-white/20 rounded-full"
-                    style={{
-                        backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent 4px, rgba(0,0,0,0.4) 4px, rgba(0,0,0,0.4) 5px)`,
-                        backgroundSize: `1% 100%`,
-                    }}
-                />
-                <div
-                    className="absolute top-1/2 -translate-y-1/2 h-full bg-white/40 rounded-full"
-                    style={{ width: `${bufferPercentage}%` }}
-                />
-                <Slider
-                    value={[Math.min(currentTime, duration || 0)]}
-                    max={duration || 100}
-                    step={0.1}
-                    onValueChange={handleSeekSlider}
-                    className="absolute w-full inset-0"
-                    trackClassName="bg-transparent"
-                    rangeClassName="bg-red-600"
-                    thumbClassName="bg-red-600 border-red-600 h-3 w-3 group-hover/progress:h-5 group-hover/progress:w-5 transition-all"
-                />
-            </div>
+            <Slider
+                value={[Math.min(currentTime, duration || 0)]}
+                max={duration || 100}
+                step={0.1}
+                onValueChange={handleSeekSlider}
+                bufferValue={bufferPercentage}
+                className="h-2 w-full [&>span]:bg-red-600 [&_[role=slider]]:h-4 [&_[role=slider]]:w-4 [&_[role=slider]]:border-red-600 [&_[role=slider]]:bg-red-600"
+            />
           </div>
 
           <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-[#212121] px-2 py-2">

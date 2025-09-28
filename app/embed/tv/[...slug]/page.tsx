@@ -81,7 +81,7 @@ export default function TvEmbedPage() {
         <VideoPlayer
           src={streamUrl}
           title={mediaTitle}
-          downloadUrl={`/api/download/series/${tmdbId}/${season}/${episode}`}
+          downloadUrl={`/download/tv/${tmdbId}/${season}/${episode}`}
           rememberPosition={true}
           rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
         />

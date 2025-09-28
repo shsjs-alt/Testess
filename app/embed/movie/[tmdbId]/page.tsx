@@ -82,7 +82,7 @@ export default function MovieEmbedPage() {
         <VideoPlayer
           src={streamUrl}
           title={mediaTitle}
-          downloadUrl={`/api/download/movies/${tmdbId}`}
+          downloadUrl={`/download/movie/${tmdbId}`}
           rememberPosition={true}
           rememberPositionKey={`movie-${tmdbId}`}
         />
