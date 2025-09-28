@@ -7,7 +7,6 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-// Helper para obter o stream do Firestore. Retorna um objeto de resposta ou null.
 async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
     if (docSnap.exists()) {
         const docData = docSnap.data();
@@ -17,9 +16,13 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                 const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
                 if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
                     const firestoreUrl = episodeData.urls[0].url;
+
+                    // --- MODIFICAÇÃO IMPORTANTE AQUI ---
+                    const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
+
                     const firestoreStream = {
                         playerType: "custom",
-                        url: `/api/video-proxy?videoUrl=${encodeURIComponent(firestoreUrl)}`,
+                        url: `/api/video-proxy?videoUrl=${safeUrl}`,
                         name: "Servidor Firebase",
                     };
                     return NextResponse.json({ streams: [firestoreStream], ...mediaInfo });
@@ -30,7 +33,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
     return null;
 }
 
-// Helper para criar uma promessa que rejeita após um timeout
 const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
 
 export async function GET(
@@ -63,7 +65,6 @@ export async function GET(
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     
-    // 1. Lógica de 'forceFirestore'
     if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         console.log(`[Série ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
@@ -71,20 +72,18 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
-    // 2. Tenta o Firestore PRIMEIRO
     const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
     if (firestoreResponse) {
         console.log(`[Série ${tmdbId}] Sucesso com o Firestore como fonte principal para S${season}E${episode}.`);
         return firestoreResponse;
     }
 
-    // 3. Fallback para a API Principal (Roxano) se o Firestore falhar
     console.log(`[Série ${tmdbId}] Nenhum stream no Firestore para S${season}E${episode}. Tentando fallback para a API Principal (Roxano)...`);
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
     try {
         const roxanoResponse = await Promise.race([
             fetch(roxanoUrl),
-            timeout(4000) // Timeout de 4 segundos
+            timeout(4000)
         ]) as Response;
       
         if (roxanoResponse.ok) {
@@ -101,7 +100,6 @@ export async function GET(
         console.log(`[Série ${tmdbId}] API Principal (Roxano) também falhou para S${season}E${episode}.`, error);
     }
 
-    // 4. Se ambas as fontes falharem
     console.log(`[Série ${tmdbId}] Nenhuma fonte de stream disponível para S${season}E${episode}.`);
     return NextResponse.json({ error: "Nenhum stream disponível para este episódio." }, { status: 404 });
 
