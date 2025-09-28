@@ -54,8 +54,7 @@ export default function VideoPlayer({
   const [showContinueWatching, setShowContinueWatching] = useState(false)
   const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
   const [thumbnails, setThumbnails] = useState<string[]>([]);
-  const previewIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
+  
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
 
@@ -65,8 +64,7 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const seekThrottleTimer = useRef<NodeJS.Timeout | null>(null);
-
+  
   useEffect(() => {
     const videoElement = videoRef.current;
     const thumbnailVideoElement = thumbnailVideoRef.current;
@@ -202,24 +200,25 @@ export default function VideoPlayer({
   const generateThumbnails = useCallback(async () => {
     const video = thumbnailVideoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || isGeneratingThumbnails || thumbnails.length > 0) return;
+    if (!video || !canvas || isGeneratingThumbnails || thumbnails.length > 0 || !video.duration) return;
 
     setIsGeneratingThumbnails(true);
+    console.log("Iniciando geração de miniaturas...");
 
     const capturedThumbnails: string[] = [];
-    const interval = (video.duration || 0) / 20;
+    const interval = video.duration / 20; // Gerar 20 miniaturas
 
     for (let i = 0; i < 20; i++) {
       video.currentTime = i * interval;
-      await new Promise(resolve => {
+      await new Promise<void>(resolve => {
         const onSeeked = () => {
+          video.removeEventListener('seeked', onSeeked);
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             capturedThumbnails.push(canvas.toDataURL('image/jpeg'));
           }
-          video.removeEventListener('seeked', onSeeked);
-          resolve(null);
+          resolve();
         };
         video.addEventListener('seeked', onSeeked);
       });
@@ -227,6 +226,7 @@ export default function VideoPlayer({
 
     setThumbnails(capturedThumbnails);
     setIsGeneratingThumbnails(false);
+    console.log("Miniaturas geradas com sucesso:", capturedThumbnails.length);
   }, [isGeneratingThumbnails, thumbnails]);
 
 
@@ -434,39 +434,31 @@ export default function VideoPlayer({
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!duration || !progressWrapRef.current) return;
-
+    if (!duration || thumbnails.length === 0 || !progressWrapRef.current || !canvasRef.current) return;
+  
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
-
-    if (previewIntervalRef.current) clearInterval(previewIntervalRef.current);
-
-    let currentThumb = 0;
-    previewIntervalRef.current = setInterval(() => {
-      const thumbnailIndex = Math.floor(pct * thumbnails.length) + currentThumb;
-      if (thumbnails[thumbnailIndex]) {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext('2d');
-        if (ctx && canvas) {
-          const img = new Image();
-          img.src = thumbnails[thumbnailIndex % thumbnails.length];
-          img.onload = () => {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          };
-        }
-      }
-      currentThumb = (currentThumb + 1) % 3; // a few frames
-    }, 200); // Change frame every 200ms
+  
+    const thumbnailIndex = Math.min(Math.floor(pct * thumbnails.length), thumbnails.length - 1);
+    const imgSrc = thumbnails[thumbnailIndex];
+  
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (ctx && imgSrc) {
+      const img = new Image();
+      img.src = imgSrc;
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpa o canvas antes de desenhar
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      };
+    }
   };
 
 
   const onProgressLeave = () => {
     setHoverTime(null);
-    if (previewIntervalRef.current) {
-      clearInterval(previewIntervalRef.current);
-    }
   };
 
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
@@ -528,22 +520,6 @@ export default function VideoPlayer({
     hoverTime !== null && duration > 0 && progressWrapRef.current
       ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
       : 0
-
-  useEffect(() => {
-    const thumbnailVideo = thumbnailVideoRef.current;
-    const canvas = canvasRef.current;
-    if (!thumbnailVideo || !canvas) return;
-
-    const onSeeked = () => {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (ctx) {
-        ctx.drawImage(thumbnailVideo, 0, 0, canvas.width, canvas.height);
-      }
-    };
-
-    thumbnailVideo.addEventListener("seeked", onSeeked);
-    return () => thumbnailVideo.removeEventListener("seeked", onSeeked);
-  }, []);
 
   return (
     <TooltipProvider delayDuration={150}>
