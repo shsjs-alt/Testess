@@ -459,8 +459,8 @@ export default function VideoPlayer({
   const hoverLeft =
     hoverTime !== null && duration > 0 && progressWrapRef.current
       ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
-      : 0;
-
+      : 0
+  
   const bufferPercentage = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
 
   return (
@@ -593,7 +593,7 @@ export default function VideoPlayer({
             onMouseLeave={onProgressLeave}
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
-            <div
+             <div
               className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
               style={{
                 left: hoverLeft,
@@ -603,14 +603,27 @@ export default function VideoPlayer({
                 {formatTime(hoverTime ?? 0)}
             </div>
             
-            <Slider
-                value={[Math.min(currentTime, duration || 0)]}
-                max={duration || 100}
-                step={0.1}
-                onValueChange={handleSeekSlider}
-                bufferValue={bufferPercentage}
-                className="h-2 w-full [&>span]:bg-red-600 [&_[role=slider]]:h-4 [&_[role=slider]]:w-4 [&_[role=slider]]:border-red-600 [&_[role=slider]]:bg-red-600"
-            />
+            <div className="relative flex items-center h-2.5 transition-[height] duration-200">
+                {/* Background da barra de progresso (preto/cinza escuro) */}
+                <div
+                    className="absolute top-1/2 -translate-y-1/2 h-full w-full bg-zinc-800 rounded-full"
+                />
+                {/* Buffer (branco) */}
+                <div
+                    className="absolute top-1/2 -translate-y-1/2 h-full bg-white/50 rounded-full"
+                    style={{ width: `${bufferPercentage}%` }}
+                />
+                <Slider
+                    value={[Math.min(currentTime, duration || 0)]}
+                    max={duration || 100}
+                    step={0.1}
+                    onValueChange={handleSeekSlider}
+                    className="absolute w-full inset-0"
+                    trackClassName="bg-transparent" // A track é transparente pois já desenhamos nosso próprio fundo e buffer
+                    rangeClassName="bg-red-600"
+                    thumbClassName="bg-red-600 border-red-600 h-3 w-3 group-hover/progress:h-5 group-hover/progress:w-5 transition-all"
+                />
+            </div>
           </div>
 
           <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-[#212121] px-2 py-2">
@@ -642,6 +655,8 @@ export default function VideoPlayer({
                 <TooltipContent>+10s (→)</TooltipContent>
               </Tooltip>
 
+              <div className="h-6 w-px bg-white/20" />
+
               <div className="flex items-center gap-2 group/vol">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -668,16 +683,19 @@ export default function VideoPlayer({
 
             <div className="flex items-center gap-1 md:gap-2">
               {downloadUrl && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <a href={downloadUrl}>
-                      <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                        <Download className="h-6 w-6" />
-                      </Button>
-                    </a>
-                  </TooltipTrigger>
-                  <TooltipContent>Baixar</TooltipContent>
-                </Tooltip>
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <a href={downloadUrl}>
+                        <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                          <Download className="h-6 w-6" />
+                        </Button>
+                      </a>
+                    </TooltipTrigger>
+                    <TooltipContent>Baixar</TooltipContent>
+                  </Tooltip>
+                  <div className="h-6 w-px bg-white/20" />
+                </>
               )}
               <Popover>
                 <Tooltip>
@@ -708,15 +726,20 @@ export default function VideoPlayer({
               </Popover>
 
               {pipSupported && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={togglePip} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                      <PictureInPicture className={cn("h-6 w-6", isPipActive && "text-red-400")} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Picture-in-Picture (P)</TooltipContent>
-                </Tooltip>
+                 <>
+                    <div className="h-6 w-px bg-white/20" />
+                    <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button onClick={togglePip} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                        <PictureInPicture className={cn("h-6 w-6", isPipActive && "text-red-400")} />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Picture-in-Picture (P)</TooltipContent>
+                    </Tooltip>
+                 </>
               )}
+
+              <div className="h-6 w-px bg-white/20" />
 
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -728,14 +751,17 @@ export default function VideoPlayer({
               </Tooltip>
 
               {onClose && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={onClose} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                      <X className="h-6 w-6" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Fechar</TooltipContent>
-                </Tooltip>
+                <>
+                  <div className="h-6 w-px bg-white/20" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={onClose} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
+                        <X className="h-6 w-6" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Fechar</TooltipContent>
+                  </Tooltip>
+                </>
               )}
             </div>
           </div>

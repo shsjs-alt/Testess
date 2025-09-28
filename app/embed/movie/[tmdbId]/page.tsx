@@ -82,7 +82,7 @@ export default function MovieEmbedPage() {
         <VideoPlayer
           src={streamUrl}
           title={mediaTitle}
-          downloadUrl={`/download/movie/${tmdbId}`}
+          downloadUrl={`/download/movies/${tmdbId}`}
           rememberPosition={true}
           rememberPositionKey={`movie-${tmdbId}`}
         />
@@ -90,5 +90,5 @@ export default function MovieEmbedPage() {
     );
   }
 
-  return null; // Caso final, embora não deva ser atingido se a lógica estiver correta
+  return null;
 }
