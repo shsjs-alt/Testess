@@ -626,12 +626,12 @@ export default function VideoPlayer({
             </div>
           </div>
 
-          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-[#212121] px-2 py-2">
+          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-[#212121] px-1 py-1 md:px-2 md:py-2">
             <div className="flex items-center gap-1 md:gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                    {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                    {isPlaying ? <Pause className="h-5 w-5 md:h-6 md:w-6" /> : <Play className="h-5 w-5 md:h-6 md:w-6" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{isPlaying ? "Pausar (K)" : "Reproduzir (K)"}</TooltipContent>
@@ -639,8 +639,8 @@ export default function VideoPlayer({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={() => seek(-10)} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                    <Rewind className="h-6 w-6" />
+                  <Button onClick={() => seek(-10)} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                    <Rewind className="h-5 w-5 md:h-6 md:w-6" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>-10s (←)</TooltipContent>
@@ -648,8 +648,8 @@ export default function VideoPlayer({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={() => seek(10)} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                    <FastForward className="h-6 w-6" />
+                  <Button onClick={() => seek(10)} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                    <FastForward className="h-5 w-5 md:h-6 md:w-6" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>+10s (→)</TooltipContent>
@@ -660,8 +660,8 @@ export default function VideoPlayer({
               <div className="flex items-center gap-2 group/vol">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={toggleMute} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                      {isMuted || volume === 0 ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+                    <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                      {isMuted || volume === 0 ? <VolumeX className="h-5 w-5 md:h-6 md:w-6" /> : <Volume2 className="h-5 w-5 md:h-6 md:w-6" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Mudo (M)</TooltipContent>
@@ -687,8 +687,8 @@ export default function VideoPlayer({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <a href={downloadUrl}>
-                        <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                          <Download className="h-6 w-6" />
+                        <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                          <Download className="h-5 w-5 md:h-6 md:w-6" />
                         </Button>
                       </a>
                     </TooltipTrigger>
@@ -701,8 +701,8 @@ export default function VideoPlayer({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <PopoverTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                        <Settings className="h-6 w-6" />
+                      <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                        <Settings className="h-5 w-5 md:h-6 md:w-6" />
                       </Button>
                     </PopoverTrigger>
                   </TooltipTrigger>
@@ -730,8 +730,8 @@ export default function VideoPlayer({
                     <div className="h-6 w-px bg-white/20" />
                     <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button onClick={togglePip} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                        <PictureInPicture className={cn("h-6 w-6", isPipActive && "text-red-400")} />
+                        <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                        <PictureInPicture className={cn("h-5 w-5 md:h-6 md:w-6", isPipActive && "text-red-400")} />
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent>Picture-in-Picture (P)</TooltipContent>
@@ -743,8 +743,8 @@ export default function VideoPlayer({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                    {isFullscreen ? <Minimize className="h-6 w-6" /> : <Maximize className="h-6 w-6" />}
+                  <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                    {isFullscreen ? <Minimize className="h-5 w-5 md:h-6 md:w-6" /> : <Maximize className="h-5 w-5 md:h-6 md:w-6" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Tela cheia (F)</TooltipContent>
@@ -755,8 +755,8 @@ export default function VideoPlayer({
                   <div className="h-6 w-px bg-white/20" />
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button onClick={onClose} size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/15">
-                        <X className="h-6 w-6" />
+                      <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                        <X className="h-5 w-5 md:h-6 md:w-6" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Fechar</TooltipContent>
