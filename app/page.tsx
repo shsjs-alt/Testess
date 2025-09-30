@@ -155,9 +155,9 @@ export default function HomePage() {
   const [heroBackdrop, setHeroBackdrop] = useState<string | null>(null);
   
   const [stats] = useState<Stats>({
-      movies: "+ de 23,535 Filmes",
-      series: "+ de 6,963 Séries",
-      episodes: "+ de 243,273 Episódios",
+      movies: "29,658 Filmes",
+      series: "6,967 Séries",
+      episodes: "243,426 Episódios",
   });
   
   const [currentPage, setCurrentPage] = useState(1);
