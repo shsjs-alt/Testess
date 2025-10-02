@@ -56,11 +56,12 @@ export default function VideoPlayer({
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
-
+  
   // Estados para a reprodução automática
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
+  const [endingTriggered, setEndingTriggered] = useState(false); // Novo estado para controle
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
@@ -76,6 +77,8 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const videoElement = videoRef.current;
+    // Reseta o gatilho de finalização sempre que a fonte do vídeo muda
+    setEndingTriggered(false);
     return () => {
       if (videoElement) {
         videoElement.pause();
@@ -83,7 +86,7 @@ export default function VideoPlayer({
         videoElement.load();
       }
     };
-  }, []);
+  }, [src]);
 
   useEffect(() => {
     try {
@@ -165,6 +168,15 @@ export default function VideoPlayer({
     };
   }, [resetControlsTimeout, hideControls]);
 
+  const triggerNextEpisodeOverlay = useCallback(() => {
+    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) {
+        return;
+    }
+    setEndingTriggered(true);
+    setShowNextEpisodeOverlay(true);
+    setCountdown(5);
+  }, [endingTriggered, isAutoplayEnabled, hasNextEpisode, onNextEpisode]);
+
 
   const handleLoadStart = () => {
     setIsLoading(true)
@@ -186,31 +198,34 @@ export default function VideoPlayer({
     setIsLoading(false)
     setError("Não foi possível carregar o vídeo.")
   }
-  const handleTimeUpdate = () => {
-    if (!videoRef.current) return
-    const newCurrentTime = videoRef.current.currentTime;
-    setCurrentTime(newCurrentTime)
 
+  const handleTimeUpdate = () => {
+    if (!videoRef.current) return;
+    const { currentTime, duration } = videoRef.current;
+    setCurrentTime(currentTime);
+
+    // Verificação robusta para o final do vídeo
+    if (duration > 0 && duration - currentTime < 1.5) {
+      triggerNextEpisodeOverlay();
+    }
+  
     try {
-      const buf = videoRef.current.buffered
+      const buf = videoRef.current.buffered;
       if (buf && buf.length > 0) {
-        const end = buf.end(buf.length - 1)
-        setBufferedEnd(end)
+        const end = buf.end(buf.length - 1);
+        setBufferedEnd(end);
       }
-    } catch { }
-  }
+    } catch {}
+  };
+
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return
     setDuration(videoRef.current.duration || 0)
   }
 
   const handleEnded = () => {
-    if (isAutoplayEnabled && hasNextEpisode && onNextEpisode) {
-      setShowNextEpisodeOverlay(true);
-      setCountdown(5);
-    } else {
-        setIsPlaying(false)
-    }
+    triggerNextEpisodeOverlay(); // Fallback
+    setIsPlaying(false)
   };
 
   const handlePlayNext = useCallback(() => {
