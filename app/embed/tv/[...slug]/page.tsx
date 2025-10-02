@@ -1,7 +1,7 @@
 // app/embed/tv/[...slug]/page.tsx
 "use client";
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -12,8 +12,16 @@ type StreamInfo = {
   title: string | null;
 };
 
+type SeasonInfo = {
+    episode_count: number;
+}
+
+const API_KEY = "860b66ade580bacae581f4228fad49fc";
+const API_BASE_URL = "https://api.themoviedb.org/3";
+
 export default function TvEmbedPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.slug as string[];
   const [tmdbId, season, episode] = slug || [];
 
@@ -21,6 +29,7 @@ export default function TvEmbedPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mediaTitle, setMediaTitle] = useState('Episódio');
+  const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
 
   useEffect(() => {
     if (!tmdbId || !season || !episode) {
@@ -29,16 +38,23 @@ export default function TvEmbedPage() {
       return;
     }
 
-    const fetchStream = async () => {
+    const fetchAllData = async () => {
       setLoading(true);
       setError(null);
+      setSeasonInfo(null);
+      setStreamUrl(null);
       try {
-        const res = await fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
-        if (!res.ok) {
+        // Fetch stream and season info in parallel
+        const streamPromise = fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
+        const seasonInfoPromise = fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}?api_key=${API_KEY}&language=pt-BR`);
+
+        const [streamRes, seasonInfoRes] = await Promise.all([streamPromise, seasonInfoPromise]);
+
+        if (!streamRes.ok) {
           throw new Error("Não foi possível obter o link do episódio.");
         }
         
-        const data: StreamInfo = await res.json();
+        const data: StreamInfo = await streamRes.json();
         const stream = data.streams?.[0];
 
         if (stream && stream.playerType === 'custom' && stream.url) {
@@ -47,6 +63,14 @@ export default function TvEmbedPage() {
         } else {
           setError("Nenhum link de streaming disponível para este episódio.");
         }
+
+        if (seasonInfoRes.ok) {
+            const seasonData = await seasonInfoRes.json();
+            setSeasonInfo(seasonData);
+        } else {
+            console.warn("Não foi possível buscar dados da temporada para determinar o próximo episódio.");
+        }
+
       } catch (err: any) {
         setError(err.message || "Ocorreu um erro ao carregar o episódio.");
       } finally {
@@ -54,8 +78,17 @@ export default function TvEmbedPage() {
       }
     };
 
-    fetchStream();
+    fetchAllData();
   }, [tmdbId, season, episode]);
+
+  const hasNextEpisode = seasonInfo ? parseInt(episode, 10) < seasonInfo.episode_count : false;
+
+  const playNextEpisode = () => {
+    if (hasNextEpisode) {
+      const nextEpisode = parseInt(episode, 10) + 1;
+      router.push(`/embed/tv/${tmdbId}/${season}/${nextEpisode}`);
+    }
+  };
   
   if (loading) {
     return (
@@ -84,6 +117,8 @@ export default function TvEmbedPage() {
           downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
           rememberPosition={true}
           rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
+          hasNextEpisode={hasNextEpisode}
+          onNextEpisode={playNextEpisode}
         />
       </main>
     );

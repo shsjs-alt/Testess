@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
 type VideoPlayerProps = {
@@ -16,6 +18,8 @@ type VideoPlayerProps = {
   onClose?: () => void
   rememberPositionKey?: string
   rememberPosition?: boolean
+  hasNextEpisode?: boolean
+  onNextEpisode?: () => void
 }
 
 export default function VideoPlayer({
@@ -25,6 +29,8 @@ export default function VideoPlayer({
   onClose,
   rememberPositionKey,
   rememberPosition = true,
+  hasNextEpisode,
+  onNextEpisode,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -51,9 +57,16 @@ export default function VideoPlayer({
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
 
-  const volumeKey = "video-player-volume"
-  const positionKey = `video-pos:${rememberPositionKey || src}`
+  // Estados para a reprodução automática
+  const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
+  const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
+  const [countdown, setCountdown] = useState(5)
 
+  const volumeKey = "video-player-volume"
+  const autoplayKey = "video-player-autoplay-enabled"
+  const positionKey = `video-pos:${rememberPositionKey || src}`
+  
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const originalRateRef = useRef<number>(1)
@@ -72,7 +85,6 @@ export default function VideoPlayer({
     };
   }, []);
 
-
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem(volumeKey)
@@ -81,6 +93,12 @@ export default function VideoPlayer({
         setVolume(v)
         if (videoRef.current) videoRef.current.volume = v
       }
+      
+      const savedAutoplay = localStorage.getItem(autoplayKey);
+      if (savedAutoplay !== null) {
+        setIsAutoplayEnabled(JSON.parse(savedAutoplay));
+      }
+
       if (rememberPosition) {
         const savedPos = localStorage.getItem(positionKey)
         if (savedPos && videoRef.current) {
@@ -186,6 +204,49 @@ export default function VideoPlayer({
     setDuration(videoRef.current.duration || 0)
   }
 
+  const handleEnded = () => {
+    if (isAutoplayEnabled && hasNextEpisode && onNextEpisode) {
+      setShowNextEpisodeOverlay(true);
+      setCountdown(5);
+    } else {
+        setIsPlaying(false)
+    }
+  };
+
+  const handlePlayNext = useCallback(() => {
+    setShowNextEpisodeOverlay(false);
+    onNextEpisode?.();
+  }, [onNextEpisode]);
+
+  const handleCancelAutoplay = () => {
+    setShowNextEpisodeOverlay(false);
+    setShowControls(true)
+    if (videoRef.current) {
+      videoRef.current.currentTime = videoRef.current.duration;
+    }
+  };
+  
+  useEffect(() => {
+    if (showNextEpisodeOverlay) {
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownIntervalRef.current!);
+            handlePlayNext();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+  
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, [showNextEpisodeOverlay, handlePlayNext]);
+
   const togglePlay = useCallback(() => {
     const v = videoRef.current
     if (!v) return
@@ -272,12 +333,21 @@ export default function VideoPlayer({
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-
   const changePlaybackRate = (rate: number) => {
     if (!videoRef.current) return
     videoRef.current.playbackRate = rate
     setPlaybackRate(rate)
   }
+
+  const toggleAutoplay = () => {
+    setIsAutoplayEnabled(prev => {
+      const newState = !prev;
+      try {
+        localStorage.setItem(autoplayKey, JSON.stringify(newState));
+      } catch (e) { /* no-op */ }
+      return newState;
+    });
+  };
 
   const togglePip = useCallback(async () => {
     const v = videoRef.current
@@ -469,7 +539,7 @@ export default function VideoPlayer({
         ref={containerRef}
         className={cn(
           "relative w-full aspect-video bg-black rounded-xl overflow-hidden group select-none",
-          isPlaying && !showControls && "cursor-none"
+          isPlaying && !showControls && !showNextEpisodeOverlay && "cursor-none"
         )}
         onDoubleClick={e => e.preventDefault()}
       >
@@ -484,6 +554,7 @@ export default function VideoPlayer({
           onLoadedMetadata={handleLoadedMetadata}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          onEnded={handleEnded}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           onTouchCancel={handleTouchEnd}
@@ -522,7 +593,7 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {!isLoading && !error && !isPlaying && (
+        {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
           <button
             aria-label="Reproduzir"
             onClick={togglePlay}
@@ -572,6 +643,25 @@ export default function VideoPlayer({
             </motion.div>
           )}
         </AnimatePresence>
+        
+        <AnimatePresence>
+          {showNextEpisodeOverlay && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90"
+            >
+              <p className="text-white text-lg mb-6 font-semibold">
+                Reproduzindo Próximo Episódio em {countdown}
+              </p>
+              <div className="flex gap-4">
+                <Button onClick={handlePlayNext} className="bg-white text-black hover:bg-zinc-200">Reproduzir</Button>
+                <Button onClick={handleCancelAutoplay} variant="secondary">Cancelar</Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="absolute inset-0 z-0 flex md:hidden">
           <div className="flex-1" onClick={() => onMobileTap('left')} />
@@ -584,7 +674,7 @@ export default function VideoPlayer({
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 md:p-3 transition-opacity duration-300",
             "bg-gradient-to-t from-black/50 to-transparent",
-            showControls ? "opacity-100" : "opacity-0",
+            showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
           )}
         >
           <div
@@ -604,11 +694,9 @@ export default function VideoPlayer({
             </div>
             
             <div className="relative flex items-center h-2.5 transition-[height] duration-200">
-                {/* Background da barra de progresso (preto/cinza escuro) */}
                 <div
                     className="absolute top-1/2 -translate-y-1/2 h-full w-full bg-zinc-800 rounded-full"
                 />
-                {/* Buffer (branco) */}
                 <div
                     className="absolute top-1/2 -translate-y-1/2 h-full bg-white/50 rounded-full"
                     style={{ width: `${bufferPercentage}%` }}
@@ -619,7 +707,7 @@ export default function VideoPlayer({
                     step={0.1}
                     onValueChange={handleSeekSlider}
                     className="absolute w-full inset-0"
-                    trackClassName="bg-transparent" // A track é transparente pois já desenhamos nosso próprio fundo e buffer
+                    trackClassName="bg-transparent"
                     rangeClassName="bg-red-600"
                     thumbClassName="bg-red-600 border-red-600 h-3 w-3 group-hover/progress:h-5 group-hover/progress:w-5 transition-all"
                 />
@@ -706,10 +794,25 @@ export default function VideoPlayer({
                       </Button>
                     </PopoverTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>Velocidade</TooltipContent>
+                  <TooltipContent>Configurações</TooltipContent>
                 </Tooltip>
-                <PopoverContent className="w-40 border-zinc-700 bg-black/80 p-2 text-white backdrop-blur">
-                  <div className="mb-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
+                <PopoverContent className="w-56 border-zinc-700 bg-black/80 p-2 text-white backdrop-blur">
+                  {hasNextEpisode && (
+                    <>
+                      <div className="mb-2 px-1 text-xs font-semibold text-white/80">Controles</div>
+                      <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between h-8 w-full px-1">
+                            <Label htmlFor="autoplay-switch" className="text-sm font-normal">Próximo ep. automático</Label>
+                            <Switch
+                              id="autoplay-switch"
+                              checked={isAutoplayEnabled}
+                              onCheckedChange={toggleAutoplay}
+                            />
+                          </div>
+                      </div>
+                    </>
+                  )}
+                  <div className="my-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
                   <div className="flex flex-col gap-1">
                     {playbackRates.map((r) => (
                       <Button
