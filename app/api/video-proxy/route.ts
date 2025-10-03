@@ -1,84 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
+// PrimeVicio - Site/app/api/video-proxy/route.ts
+import { NextResponse, NextRequest } from "next/server";
 
-const uriRegex = /URI="([^"]+)"/g;
+// O runtime 'edge' é ideal para redirecionamentos, pois é muito rápido.
+export const runtime = "edge";
 
 export async function GET(request: NextRequest) {
-    const { searchParams } = new URL(request.url);
-    const videoUrl = searchParams.get("videoUrl");
+  // 1. Verificação de segurança (Referer)
+  // Isto ainda impede que outros sites usem o seu link de embed diretamente.
+  const referer = request.headers.get("referer");
+  const allowedReferer = process.env.ALLOWED_REFERER; // Lembre-se de configurar esta variável no seu Vercel
 
-    if (!videoUrl) {
-        return new NextResponse("URL do vídeo não foi fornecida.", { status: 400 });
-    }
+  if (allowedReferer && (!referer || !referer.startsWith(allowedReferer))) {
+    return new NextResponse("Acesso Negado.", { status: 403 });
+  }
 
-    try {
-        const url = new URL(videoUrl);
-        const originResponse = await fetch(videoUrl, {
-            headers: {
-                'Referer': `https://${url.hostname}/`,
-                'Origin': `https://${url.hostname}`,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-            },
-            redirect: 'follow',
-        });
+  // 2. Obtenção da URL do vídeo
+  const { searchParams } = new URL(request.url);
+  const videoUrl = searchParams.get("videoUrl");
 
-        if (!originResponse.ok) {
-            console.error(`Falha ao buscar URL original: ${videoUrl} - Status: ${originResponse.status}`);
-            return new NextResponse('Falha ao buscar o conteúdo de origem.', { status: originResponse.status });
-        }
+  if (!videoUrl) {
+    return new NextResponse("URL do vídeo não foi fornecida.", { status: 400 });
+  }
 
-        const finalUrl = originResponse.url;
-        const isManifest = finalUrl.includes('.m3u8') || finalUrl.includes('.txt');
-        
-        const responseHeaders = new Headers({
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-        });
-
-        if (isManifest) {
-            let manifestText = await originResponse.text();
-            
-            // Extrai a URL base (tudo antes do último '/')
-            const baseUrl = finalUrl.substring(0, finalUrl.lastIndexOf('/') + 1);
-
-            const proxyUrl = (path: string) => {
-                // Se o caminho já for uma URL absoluta, use-a diretamente
-                if (path.startsWith('http')) {
-                    return `/api/video-proxy?videoUrl=${encodeURIComponent(path)}`;
-                }
-                // Se for relativo, constrói a URL completa corretamente
-                const fullSegmentUrl = new URL(path, baseUrl).href;
-                return `/api/video-proxy?videoUrl=${encodeURIComponent(fullSegmentUrl)}`;
-            };
-            
-            manifestText = manifestText.replace(uriRegex, (match, uri) => `URI="${proxyUrl(uri)}"`);
-            
-            const rewrittenManifest = manifestText.split('\n').map(line => {
-                const trimmed = line.trim();
-                if (trimmed && !trimmed.startsWith('#')) {
-                    return proxyUrl(trimmed);
-                }
-                return line;
-            }).join('\n');
-
-            responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl');
-            return new NextResponse(rewrittenManifest, { status: 200, headers: responseHeaders });
-        } else {
-            const readableStream = originResponse.body;
-            const contentType = originResponse.headers.get('Content-Type');
-            if (contentType) responseHeaders.set('Content-Type', contentType);
-            const contentLength = originResponse.headers.get('Content-Length');
-            if (contentLength) responseHeaders.set('Content-Length', contentLength);
-
-            return new NextResponse(readableStream, {
-                status: originResponse.status,
-                statusText: originResponse.statusText,
-                headers: responseHeaders
-            });
-        }
-    } catch (error) {
-        console.error("Erro CRÍTICO no proxy de vídeo:", error);
-        return new NextResponse("Erro interno no servidor de proxy.", { status: 500 });
-    }
+  // 3. Redirecionar o navegador do utilizador para a URL final do vídeo
+  // Esta é a abordagem que garante que o vídeo toque.
+  try {
+    // O código 307 (Redirecionamento Temporário) é o mais apropriado aqui.
+    return NextResponse.redirect(new URL(videoUrl), 307);
+  } catch (error) {
+    console.error("URL de redirecionamento inválida:", videoUrl, error);
+    return new NextResponse("URL de vídeo inválida.", { status: 400 });
+  }
 }

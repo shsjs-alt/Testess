@@ -17,6 +17,7 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                 if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
                     const firestoreUrl = episodeData.urls[0].url;
 
+                    // --- MODIFICAÇÃO IMPORTANTE AQUI ---
                     const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
 
                     const firestoreStream = {
@@ -80,22 +81,21 @@ export async function GET(
     console.log(`[Série ${tmdbId}] Nenhum stream no Firestore para S${season}E${episode}. Tentando fallback para a API Principal (Roxano)...`);
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
     try {
-        const roxanoInitialResponse = await Promise.race([
-            fetch(roxanoUrl, { redirect: 'follow' }), // Segue os redirecionamentos
+        const roxanoResponse = await Promise.race([
+            fetch(roxanoUrl),
             timeout(4000)
         ]) as Response;
       
-        if (roxanoInitialResponse.ok) {
-            const finalMediaUrl = roxanoInitialResponse.url; // Pega a URL final após redirecionamentos
-            console.log(`[Série ${tmdbId}] Sucesso com o fallback da API Principal (Roxano) para S${season}E${episode}. URL resolvida: ${finalMediaUrl}`);
+        if (roxanoResponse.ok) {
+            console.log(`[Série ${tmdbId}] Sucesso com o fallback da API Principal (Roxano) para S${season}E${episode}.`);
             const stream = {
                 playerType: "custom",
-                url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalMediaUrl)}`, // Envia a URL final para o proxy
+                url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
                 name: `Servidor Principal (T${season} E${episode})`,
             };
             return NextResponse.json({ streams: [stream], ...mediaInfo });
         }
-        throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoInitialResponse.status}`);
+        throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
     } catch (error) {
         console.log(`[Série ${tmdbId}] API Principal (Roxano) também falhou para S${season}E${episode}.`, error);
     }
