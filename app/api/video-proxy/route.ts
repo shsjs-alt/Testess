@@ -1,16 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Expressão regular para encontrar atributos URI="..." nos manifestos HLS
 const uriRegex = /URI="([^"]+)"/g;
 
 export async function GET(request: NextRequest) {
-    const referer = request.headers.get("referer");
-    const allowedReferer = process.env.ALLOWED_REFERER;
-
-    if (allowedReferer && (!referer || !referer.startsWith(allowedReferer))) {
-        return new NextResponse("Acesso Negado.", { status: 403 });
-    }
-
     const { searchParams } = new URL(request.url);
     const videoUrl = searchParams.get("videoUrl");
 
@@ -20,69 +12,61 @@ export async function GET(request: NextRequest) {
 
     try {
         const url = new URL(videoUrl);
-        // Uma heurística mais ampla para detectar manifestos
-        const isManifest = videoUrl.includes('.m3u8') || videoUrl.endsWith('.txt');
-
         const originResponse = await fetch(videoUrl, {
             headers: {
                 'Referer': `https://${url.hostname}/`,
                 'Origin': `https://${url.hostname}`,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
             },
-            redirect: 'follow', // Segue redirecionamentos automaticamente
+            redirect: 'follow',
         });
 
         if (!originResponse.ok) {
+            console.error(`Falha ao buscar URL original: ${videoUrl} - Status: ${originResponse.status}`);
             return new NextResponse('Falha ao buscar o conteúdo de origem.', { status: originResponse.status });
         }
 
-        // Usa a URL final após redirecionamentos como base para links relativos
         const finalUrl = originResponse.url;
-
-        // Headers de resposta para o cliente, prevenindo o cache
+        const isManifest = finalUrl.includes('.m3u8') || finalUrl.includes('.txt');
+        
         const responseHeaders = new Headers({
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
         });
 
         if (isManifest) {
             let manifestText = await originResponse.text();
+            
+            // Extrai a URL base (tudo antes do último '/') e os parâmetros
+            const baseUrl = finalUrl.substring(0, finalUrl.lastIndexOf('/') + 1);
+            const urlParams = finalUrl.split('?')[1] || '';
 
-            // Função para resolver um caminho relativo e criar a URL do proxy
             const proxyUrl = (path: string) => {
-                const absoluteUrl = new URL(path, finalUrl).toString();
-                return `/api/video-proxy?videoUrl=${encodeURIComponent(absoluteUrl)}`;
+                // Se o caminho já for uma URL absoluta, use-a diretamente
+                if (path.startsWith('http')) {
+                    return `/api/video-proxy?videoUrl=${encodeURIComponent(path)}`;
+                }
+                // Se for relativo, constrói a URL completa preservando os parâmetros
+                const fullSegmentUrl = `${baseUrl}${path}${urlParams ? '?' + urlParams : ''}`;
+                return `/api/video-proxy?videoUrl=${encodeURIComponent(fullSegmentUrl)}`;
             };
-
-            // 1. Reescreve URLs dentro de atributos URI="..."
-            manifestText = manifestText.replace(uriRegex, (match, uri) => {
-                return `URI="${proxyUrl(uri)}"`;
-            });
-
-            // 2. Reescreve URLs que estão sozinhas em uma linha
-            const rewrittenManifest = manifestText
-                .split('\n')
-                .map(line => {
-                    const trimmedLine = line.trim();
-                    if (trimmedLine && !trimmedLine.startsWith('#')) {
-                        return proxyUrl(trimmedLine);
-                    }
-                    return line;
-                })
-                .join('\n');
+            
+            manifestText = manifestText.replace(uriRegex, (match, uri) => `URI="${proxyUrl(uri)}"`);
+            
+            const rewrittenManifest = manifestText.split('\n').map(line => {
+                const trimmed = line.trim();
+                if (trimmed && !trimmed.startsWith('#')) {
+                    return proxyUrl(trimmed);
+                }
+                return line;
+            }).join('\n');
 
             responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl');
             return new NextResponse(rewrittenManifest, { status: 200, headers: responseHeaders });
-
         } else {
-            // Se for um segmento de vídeo (.ts) ou outro arquivo, apenas faz o stream
             const readableStream = originResponse.body;
-            
-            // Repassa os headers originais importantes
             const contentType = originResponse.headers.get('Content-Type');
             if (contentType) responseHeaders.set('Content-Type', contentType);
             const contentLength = originResponse.headers.get('Content-Length');
@@ -94,9 +78,8 @@ export async function GET(request: NextRequest) {
                 headers: responseHeaders
             });
         }
-
     } catch (error) {
-        console.error("Erro no proxy de vídeo:", error);
+        console.error("Erro CRÍTICO no proxy de vídeo:", error);
         return new NextResponse("Erro interno no servidor de proxy.", { status: 500 });
     }
 }
