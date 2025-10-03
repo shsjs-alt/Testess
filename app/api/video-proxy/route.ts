@@ -39,17 +39,16 @@ export async function GET(request: NextRequest) {
         if (isManifest) {
             let manifestText = await originResponse.text();
             
-            // Extrai a URL base (tudo antes do último '/') e os parâmetros
+            // Extrai a URL base (tudo antes do último '/')
             const baseUrl = finalUrl.substring(0, finalUrl.lastIndexOf('/') + 1);
-            const urlParams = finalUrl.split('?')[1] || '';
 
             const proxyUrl = (path: string) => {
                 // Se o caminho já for uma URL absoluta, use-a diretamente
                 if (path.startsWith('http')) {
                     return `/api/video-proxy?videoUrl=${encodeURIComponent(path)}`;
                 }
-                // Se for relativo, constrói a URL completa preservando os parâmetros
-                const fullSegmentUrl = `${baseUrl}${path}${urlParams ? '?' + urlParams : ''}`;
+                // Se for relativo, constrói a URL completa corretamente
+                const fullSegmentUrl = new URL(path, baseUrl).href;
                 return `/api/video-proxy?videoUrl=${encodeURIComponent(fullSegmentUrl)}`;
             };
             
