@@ -14,8 +14,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url;
             
-            // --- MODIFICAÇÃO IMPORTANTE AQUI ---
-            // Decodificamos a URL primeiro para evitar dupla codificação, depois codificamos novamente de forma segura.
             const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
 
             const firestoreStream = {
@@ -82,21 +80,22 @@ export async function GET(
     console.log(`[Filme ${tmdbId}] Nenhum stream no Firestore. Tentando fallback para a API Principal (Roxano)...`);
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
     try {
-        const roxanoResponse = await Promise.race([
-            fetch(roxanoUrl),
+        const roxanoInitialResponse = await Promise.race([
+            fetch(roxanoUrl, { redirect: 'follow' }), // Segue os redirecionamentos
             timeout(4000)
         ]) as Response;
 
-        if (roxanoResponse.ok) {
-            console.log(`[Filme ${tmdbId}] Sucesso com o fallback da API Principal (Roxano).`);
+        if (roxanoInitialResponse.ok) {
+            const finalMediaUrl = roxanoInitialResponse.url; // Pega a URL final após redirecionamentos
+            console.log(`[Filme ${tmdbId}] Sucesso com o fallback da API Principal (Roxano). URL resolvida: ${finalMediaUrl}`);
             const stream = {
                 playerType: "custom",
-                url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+                url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalMediaUrl)}`, // Envia a URL final para o proxy
                 name: "Servidor Principal",
             };
             return NextResponse.json({ streams: [stream], ...mediaInfo });
         }
-        throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
+        throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoInitialResponse.status}`);
     } catch (error) {
         console.log(`[Filme ${tmdbId}] API Principal (Roxano) também falhou.`, error);
     }
