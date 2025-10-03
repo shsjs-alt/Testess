@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Expressão regular para encontrar atributos URI="..." nos manifestos HLS
+const uriRegex = /URI="([^"]+)"/g;
+
 export async function GET(request: NextRequest) {
     const referer = request.headers.get("referer");
     const allowedReferer = process.env.ALLOWED_REFERER;
@@ -17,57 +20,78 @@ export async function GET(request: NextRequest) {
 
     try {
         const url = new URL(videoUrl);
+        // Uma heurística mais ampla para detectar manifestos
         const isManifest = videoUrl.includes('.m3u8') || videoUrl.endsWith('.txt');
 
-        // Fetch do recurso original (manifesto ou segmento de vídeo)
         const originResponse = await fetch(videoUrl, {
             headers: {
-                'Referer': `https://${url.hostname}/`, // Referer dinâmico
+                'Referer': `https://${url.hostname}/`,
+                'Origin': `https://${url.hostname}`,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             },
+            redirect: 'follow', // Segue redirecionamentos automaticamente
         });
 
         if (!originResponse.ok) {
             return new NextResponse('Falha ao buscar o conteúdo de origem.', { status: originResponse.status });
         }
 
-        // Se for um manifesto, precisamos reescrever as URLs internas
-        if (isManifest) {
-            const manifestText = await originResponse.text();
-            
-            // A URL completa do manifesto serve como base para resolver caminhos relativos
-            const baseUrlForRelativePaths = videoUrl; 
+        // Usa a URL final após redirecionamentos como base para links relativos
+        const finalUrl = originResponse.url;
 
+        // Headers de resposta para o cliente, prevenindo o cache
+        const responseHeaders = new Headers({
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+        });
+
+        if (isManifest) {
+            let manifestText = await originResponse.text();
+
+            // Função para resolver um caminho relativo e criar a URL do proxy
+            const proxyUrl = (path: string) => {
+                const absoluteUrl = new URL(path, finalUrl).toString();
+                return `/api/video-proxy?videoUrl=${encodeURIComponent(absoluteUrl)}`;
+            };
+
+            // 1. Reescreve URLs dentro de atributos URI="..."
+            manifestText = manifestText.replace(uriRegex, (match, uri) => {
+                return `URI="${proxyUrl(uri)}"`;
+            });
+
+            // 2. Reescreve URLs que estão sozinhas em uma linha
             const rewrittenManifest = manifestText
                 .split('\n')
                 .map(line => {
                     const trimmedLine = line.trim();
                     if (trimmedLine && !trimmedLine.startsWith('#')) {
-                        // Se a linha não é um comentário, é uma URL
-                        const absoluteSegmentUrl = new URL(trimmedLine, baseUrlForRelativePaths).toString();
-                        // Reescreve a URL para apontar de volta para o nosso proxy
-                        return `/api/video-proxy?videoUrl=${encodeURIComponent(absoluteSegmentUrl)}`;
+                        return proxyUrl(trimmedLine);
                     }
                     return line;
                 })
                 .join('\n');
 
-            const headers = new Headers({
-                'Content-Type': 'application/vnd.apple.mpegurl',
-                'Access-Control-Allow-Origin': '*',
-            });
+            responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl');
+            return new NextResponse(rewrittenManifest, { status: 200, headers: responseHeaders });
 
-            return new NextResponse(rewrittenManifest, { status: 200, headers });
         } else {
             // Se for um segmento de vídeo (.ts) ou outro arquivo, apenas faz o stream
             const readableStream = originResponse.body;
-            const headers = new Headers(originResponse.headers);
-            headers.set('Access-Control-Allow-Origin', '*');
+            
+            // Repassa os headers originais importantes
+            const contentType = originResponse.headers.get('Content-Type');
+            if (contentType) responseHeaders.set('Content-Type', contentType);
+            const contentLength = originResponse.headers.get('Content-Length');
+            if (contentLength) responseHeaders.set('Content-Length', contentLength);
 
             return new NextResponse(readableStream, {
                 status: originResponse.status,
                 statusText: originResponse.statusText,
-                headers: headers
+                headers: responseHeaders
             });
         }
 
