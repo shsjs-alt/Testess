@@ -1,20 +1,9 @@
 // PrimeVicio - Site/app/api/video-proxy/route.ts
 import { NextResponse, NextRequest } from "next/server";
 
-// O runtime 'edge' é ideal para redirecionamentos, pois é muito rápido.
 export const runtime = "edge";
 
 export async function GET(request: NextRequest) {
-  // 1. Verificação de segurança (Referer)
-  // Isto ainda impede que outros sites usem o seu link de embed diretamente.
-  const referer = request.headers.get("referer");
-  const allowedReferer = process.env.ALLOWED_REFERER; // Lembre-se de configurar esta variável no seu Vercel
-
-  if (allowedReferer && (!referer || !referer.startsWith(allowedReferer))) {
-    return new NextResponse("Acesso Negado.", { status: 403 });
-  }
-
-  // 2. Obtenção da URL do vídeo
   const { searchParams } = new URL(request.url);
   const videoUrl = searchParams.get("videoUrl");
 
@@ -22,13 +11,35 @@ export async function GET(request: NextRequest) {
     return new NextResponse("URL do vídeo não foi fornecida.", { status: 400 });
   }
 
-  // 3. Redirecionar o navegador do utilizador para a URL final do vídeo
-  // Esta é a abordagem que garante que o vídeo toque.
   try {
-    // O código 307 (Redirecionamento Temporário) é o mais apropriado aqui.
-    return NextResponse.redirect(new URL(videoUrl), 307);
+    // Busca o vídeo no servidor, atuando como um proxy
+    const videoResponse = await fetch(decodeURIComponent(videoUrl), {
+      headers: {
+        // Adiciona um referer para simular uma requisição válida
+        'Referer': 'https://watch.brplayer.cc/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      },
+    });
+
+    if (!videoResponse.ok) {
+      return new NextResponse(`Falha ao buscar o vídeo: ${videoResponse.statusText}`, { status: videoResponse.status });
+    }
+
+    // Cria uma resposta de streaming
+    const headers = new Headers();
+    headers.set('Content-Type', videoResponse.headers.get('Content-Type') || 'application/vnd.apple.mpegurl');
+    headers.set('Content-Length', videoResponse.headers.get('Content-Length') || '');
+    headers.set('Accept-Ranges', 'bytes');
+    headers.set('Connection', 'keep-alive');
+
+    // Retorna o corpo do vídeo como um stream
+    return new NextResponse(videoResponse.body, {
+      status: videoResponse.status,
+      headers: headers
+    });
+
   } catch (error) {
-    console.error("URL de redirecionamento inválida:", videoUrl, error);
-    return new NextResponse("URL de vídeo inválida.", { status: 400 });
+    console.error("Erro no proxy de vídeo:", error);
+    return new NextResponse("Erro ao processar o proxy de vídeo.", { status: 500 });
   }
 }
