@@ -17,12 +17,15 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                 if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
                     const firestoreUrl = episodeData.urls[0].url;
 
-                    // --- MODIFICAÇÃO IMPORTANTE AQUI ---
-                    const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
+                    // --- NOVA LÓGICA CONDICIONAL ---
+                    // Se a URL for do brplayer, usa diretamente. Caso contrário, usa o proxy.
+                    const streamUrl = firestoreUrl.includes("brplayer.cc")
+                      ? firestoreUrl
+                      : `/api/video-proxy?videoUrl=${encodeURIComponent(decodeURIComponent(firestoreUrl))}`;
 
                     const firestoreStream = {
                         playerType: "custom",
-                        url: `/api/video-proxy?videoUrl=${safeUrl}`,
+                        url: streamUrl,
                         name: "Servidor Firebase",
                     };
                     return NextResponse.json({ streams: [firestoreStream], ...mediaInfo });
