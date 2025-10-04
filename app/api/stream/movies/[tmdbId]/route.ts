@@ -14,7 +14,7 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url;
 
-            // --- NOVA LÓGICA CONDICIONAL ---
+            // --- CÓDIGO CORRIGIDO ---
             // Se a URL for do brplayer, usa diretamente. Caso contrário, usa o proxy.
             const streamUrl = firestoreUrl.includes("brplayer.cc")
               ? firestoreUrl
