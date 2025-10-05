@@ -86,6 +86,8 @@ export default function MovieEmbedPage() {
             allow="autoplay; fullscreen"
             allowFullScreen
           ></iframe>
+          {/* Div para cobrir o botão "abrir em nova guia" do Google Drive */}
+          <div className="absolute top-0 right-0 w-16 h-14 bg-black z-10"></div>
         </main>
       );
     }
