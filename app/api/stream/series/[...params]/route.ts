@@ -7,6 +7,13 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
+// Função para extrair o ID de um link do Google Drive
+function getGoogleDriveId(url: string): string | null {
+    const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+}
+
 async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
     if (docSnap.exists()) {
         const docData = docSnap.data();
@@ -15,7 +22,17 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
             if (seasonData && Array.isArray(seasonData.episodes)) {
                 const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
                 if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
-                    const firestoreUrl = episodeData.urls[0].url;
+                    const firestoreUrl = episodeData.urls[0].url as string;
+
+                    const googleDriveId = getGoogleDriveId(firestoreUrl);
+                    if (googleDriveId) {
+                        const gdriveStream = {
+                            playerType: "gdrive",
+                            url: `https://drive.google.com/file/d/${googleDriveId}/preview`,
+                            name: "Servidor Google Drive",
+                        };
+                        return NextResponse.json({ streams: [gdriveStream], ...mediaInfo });
+                    }
 
                     // --- MODIFICAÇÃO IMPORTANTE AQUI ---
                     const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));

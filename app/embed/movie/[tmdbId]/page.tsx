@@ -18,7 +18,7 @@ export default function MovieEmbedPage() {
   const params = useParams();
   const tmdbId = params.tmdbId as string;
   
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [stream, setStream] = useState<{ url: string; playerType: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mediaTitle, setMediaTitle] = useState('Filme');
@@ -40,10 +40,10 @@ export default function MovieEmbedPage() {
         }
         
         const data: StreamInfo = await res.json();
-        const stream = data.streams?.[0];
+        const firstStream = data.streams?.[0];
 
-        if (stream && stream.playerType === 'custom' && stream.url) {
-          setStreamUrl(stream.url);
+        if (firstStream && firstStream.url) {
+          setStream(firstStream);
           setMediaTitle(data.title || "Filme");
         } else {
           setError("Nenhum link de streaming disponível para este filme.");
@@ -76,11 +76,24 @@ export default function MovieEmbedPage() {
     );
   }
 
-  if (streamUrl) {
+  if (stream) {
+    if (stream.playerType === 'gdrive') {
+      return (
+        <main className="w-screen h-screen relative bg-black">
+          <iframe
+            src={stream.url}
+            className="w-full h-full border-0"
+            allow="autoplay; fullscreen"
+            allowFullScreen
+          ></iframe>
+        </main>
+      );
+    }
+    
     return (
       <main className="w-screen h-screen relative bg-black">
         <VideoPlayer
-          src={streamUrl}
+          src={stream.url}
           title={mediaTitle}
           downloadUrl={`/download/movies/${tmdbId}`}
           rememberPosition={true}

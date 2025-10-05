@@ -7,12 +7,34 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
+// Função para extrair o ID de um link do Google Drive
+function getGoogleDriveId(url: string): string | null {
+    const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+}
+
+
 // Helper para obter o stream do Firestore. Retorna um objeto de resposta ou null.
 async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     if (docSnap.exists()) {
         const docData = docSnap.data();
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
-            const firestoreUrl = docData.urls[0].url;
+            const firestoreUrl = docData.urls[0].url as string;
+            
+            const googleDriveId = getGoogleDriveId(firestoreUrl);
+
+            if (googleDriveId) {
+                const gdriveStream = {
+                    playerType: "gdrive",
+                    url: `https://drive.google.com/file/d/${googleDriveId}/preview`,
+                    name: "Servidor Google Drive",
+                };
+                return NextResponse.json({
+                    streams: [gdriveStream],
+                    ...mediaInfo
+                });
+            }
             
             // --- MODIFICAÇÃO IMPORTANTE AQUI ---
             // Decodificamos a URL primeiro para evitar dupla codificação, depois codificamos novamente de forma segura.
