@@ -156,8 +156,8 @@ export default function HomePage() {
   
   const [stats] = useState<Stats>({
       movies: "29,658 Filmes",
-      series: "7,038 Séries",
-      episodes: "246,869 Episódios",
+      series: "7,070 Séries",
+      episodes: "248,458 Episódios",
   });
   
   const [currentPage, setCurrentPage] = useState(1);
