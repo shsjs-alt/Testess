@@ -36,7 +36,6 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
-  const thumbnailCanvasRef = useRef<HTMLCanvasElement>(null)
 
   const [isPlaying, setIsPlaying] = useState(true)
   const [showControls, setShowControls] = useState(true)
@@ -55,7 +54,6 @@ export default function VideoPlayer({
   const [isPipActive, setIsPipActive] = useState(false)
 
   const [hoverTime, setHoverTime] = useState<number | null>(null)
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
@@ -77,7 +75,6 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const seekTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -491,47 +488,16 @@ export default function VideoPlayer({
     };
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying]);
 
-  const generateThumbnail = useCallback((time: number) => {
-    const video = videoRef.current;
-    const canvas = thumbnailCanvasRef.current;
-    if (!video || !canvas || video.readyState < 1) return;
-  
-    const onSeeked = () => {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const videoAspectRatio = video.videoWidth / video.videoHeight;
-        const canvasWidth = 160;
-        const canvasHeight = canvasWidth / videoAspectRatio;
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        ctx.drawImage(video, 0, 0, canvasWidth, canvasHeight);
-        setThumbnailUrl(canvas.toDataURL());
-      }
-      video.currentTime = currentTime; // Retorna para a posição original
-      video.removeEventListener('seeked', onSeeked);
-    };
-  
-    video.addEventListener('seeked', onSeeked);
-    video.currentTime = time;
-  
-  }, [currentTime]);
-
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration || !progressWrapRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
-    
-    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-    seekTimeoutRef.current = setTimeout(() => {
-      generateThumbnail(time);
-    }, 50);
   };
 
   const onProgressLeave = () => {
     setHoverTime(null);
-    setThumbnailUrl(null);
   };
 
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
@@ -624,9 +590,7 @@ export default function VideoPlayer({
           preload="metadata"
           autoPlay
           playsInline
-          crossOrigin="anonymous"
         />
-        <canvas ref={thumbnailCanvasRef} className="hidden" />
 
         <div
           className="absolute inset-0 z-0"
@@ -769,7 +733,7 @@ export default function VideoPlayer({
           style={{ transform: 'translateZ(0)' }}
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-2 md:bottom-3 z-10 px-2 md:px-3 transition-opacity duration-300",
-            "bg-gradient-to-t from-black/50 to-transparent pt-10", // Adicionado pt-10 para espaço extra
+            "bg-gradient-to-t from-black/50 to-transparent pt-10",
             showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
           )}
         >
@@ -780,16 +744,13 @@ export default function VideoPlayer({
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
              <div
-              className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black/70 p-1 backdrop-blur-sm border border-white/10 shadow-lg"
+              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
               style={{
                 left: hoverLeft,
                 visibility: hoverTime !== null ? 'visible' : 'hidden',
               }}
             >
-                {thumbnailUrl && (
-                  <img src={thumbnailUrl} alt="Thumbnail" className="block rounded-sm w-40 aspect-video object-cover mb-1" />
-                )}
-                <span className="text-xs text-white px-1">{formatTime(hoverTime ?? 0)}</span>
+                {formatTime(hoverTime ?? 0)}
             </div>
             
             <div className="relative flex items-center h-2.5 transition-[height] duration-200">
