@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, FastForward, Rewind, Settings, PictureInPicture, X, Download } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, Settings, PictureInPicture, X, Download } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -32,7 +32,7 @@ export default function VideoPlayer({
   hasNextEpisode,
   onNextEpisode,
 }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
@@ -47,6 +47,7 @@ export default function VideoPlayer({
   const [isMuted, setIsMuted] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isBuffering, setIsBuffering] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [pipSupported, setPipSupported] = useState(false)
@@ -61,7 +62,7 @@ export default function VideoPlayer({
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
-  const [endingTriggered, setEndingTriggered] = useState(false); // Novo estado para controle
+  const [endingTriggered, setEndingTriggered] = useState(false);
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
@@ -77,7 +78,6 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    // Reseta o gatilho de finalização sempre que a fonte do vídeo muda
     setEndingTriggered(false);
     return () => {
       if (videoElement) {
@@ -184,19 +184,21 @@ export default function VideoPlayer({
   }
   const handleCanPlay = () => {
     setIsLoading(false)
+    setIsBuffering(false)
     const v = videoRef.current;
     if (v && !showContinueWatching) {
       v.play().then(() => {
         setIsPlaying(true);
       }).catch(err => {
-        console.warn("Autoplay foi impedido:", err)
+        console.warn("Autoplay was prevented:", err)
         setIsPlaying(false);
       });
     }
   }
   const handleError = () => {
     setIsLoading(false)
-    setError("Não foi possível carregar o vídeo.")
+    setIsBuffering(false)
+    setError("Could not load the video.")
   }
 
   const handleTimeUpdate = () => {
@@ -204,7 +206,6 @@ export default function VideoPlayer({
     const { currentTime, duration } = videoRef.current;
     setCurrentTime(currentTime);
 
-    // Verificação robusta para o final do vídeo
     if (duration > 0 && duration - currentTime < 1.5) {
       triggerNextEpisodeOverlay();
     }
@@ -224,7 +225,7 @@ export default function VideoPlayer({
   }
 
   const handleEnded = () => {
-    triggerNextEpisodeOverlay(); // Fallback
+    triggerNextEpisodeOverlay();
     setIsPlaying(false)
   };
 
@@ -319,6 +320,16 @@ export default function VideoPlayer({
   }
 
   const toggleFullscreen = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+  
+    // iOS specific fullscreen
+    if (video.webkitEnterFullscreen) {
+        video.webkitEnterFullscreen();
+        return;
+    }
+
+    // Standard fullscreen API
     const container = containerRef.current;
     if (!container) return;
 
@@ -332,7 +343,7 @@ export default function VideoPlayer({
         await document.exitFullscreen();
       }
     } catch (err) {
-      console.error("Erro ao gerenciar tela cheia ou orientação:", err);
+      console.error("Error managing fullscreen or orientation:", err);
     }
   }, []);
 
@@ -374,7 +385,7 @@ export default function VideoPlayer({
         await (v as any).requestPictureInPicture()
       }
     } catch (e) {
-      console.error("Erro no PIP", e)
+      console.error("PIP Error", e)
     }
   }, [])
 
@@ -564,6 +575,8 @@ export default function VideoPlayer({
           className="h-full w-full object-contain"
           onLoadStart={handleLoadStart}
           onCanPlay={handleCanPlay}
+          onPlaying={() => setIsBuffering(false)}
+          onWaiting={() => setIsBuffering(true)}
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
@@ -583,9 +596,9 @@ export default function VideoPlayer({
           onClick={handleMainClick}
         />
 
-        {isLoading && (
+        {(isLoading || isBuffering) && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-red-600/50 border-t-red-600" />
           </div>
         )}
 
@@ -596,11 +609,11 @@ export default function VideoPlayer({
               <div className="flex items-center justify-center gap-2">
                 <Button onClick={retry} variant="secondary" className="h-9">
                   <RotateCcw className="mr-2 h-4 w-4" />
-                  Tentar novamente
+                  Try Again
                 </Button>
                 {onClose && (
                   <Button onClick={onClose} variant="outline" className="h-9">
-                    Fechar
+                    Close
                   </Button>
                 )}
               </div>
@@ -610,7 +623,7 @@ export default function VideoPlayer({
 
         {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
           <button
-            aria-label="Reproduzir"
+            aria-label="Play"
             onClick={togglePlay}
             className={cn(
               "absolute z-10 inset-0 m-auto h-16 w-16 rounded-full",
@@ -628,10 +641,10 @@ export default function VideoPlayer({
             className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70"
             ref={continueWatchingDialogRef}
           >
-            <p className="text-white text-lg mb-4">Deseja continuar assistindo de onde parou?</p>
+            <p className="text-white text-lg mb-4">Continue watching from where you left off?</p>
             <div className="flex gap-4">
-              <Button onClick={handleContinue} className="bg-white text-black">Sim</Button>
-              <Button onClick={handleRestart} variant="secondary">Recomeçar</Button>
+              <Button onClick={handleContinue} className="bg-white text-black">Yes</Button>
+              <Button onClick={handleRestart} variant="secondary">Restart</Button>
             </div>
           </div>
         )}
@@ -668,11 +681,11 @@ export default function VideoPlayer({
               className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90"
             >
               <p className="text-white text-lg mb-6 font-semibold">
-                Reproduzindo Próximo Episódio em {countdown}
+                Playing next episode in {countdown}
               </p>
               <div className="flex gap-4">
-                <Button onClick={handlePlayNext} className="bg-white text-black hover:bg-zinc-200">Reproduzir</Button>
-                <Button onClick={handleCancelAutoplay} variant="secondary">Cancelar</Button>
+                <Button onClick={handlePlayNext} className="bg-white text-black hover:bg-zinc-200">Play</Button>
+                <Button onClick={handleCancelAutoplay} variant="secondary">Cancel</Button>
               </div>
             </motion.div>
           )}
@@ -737,25 +750,7 @@ export default function VideoPlayer({
                     {isPlaying ? <Pause className="h-5 w-5 md:h-6 md:w-6" /> : <Play className="h-5 w-5 md:h-6 md:w-6" />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{isPlaying ? "Pausar (K)" : "Reproduzir (K)"}</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button onClick={() => seek(-10)} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                    <Rewind className="h-5 w-5 md:h-6 md:w-6" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>-10s (←)</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button onClick={() => seek(10)} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                    <FastForward className="h-5 w-5 md:h-6 md:w-6" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>+10s (→)</TooltipContent>
+                <TooltipContent>{isPlaying ? "Pause (K)" : "Play (K)"}</TooltipContent>
               </Tooltip>
 
               <div className="h-6 w-px bg-white/20" />
@@ -767,7 +762,7 @@ export default function VideoPlayer({
                       {isMuted || volume === 0 ? <VolumeX className="h-5 w-5 md:h-6 md:w-6" /> : <Volume2 className="h-5 w-5 md:h-6 md:w-6" />}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Mudo (M)</TooltipContent>
+                  <TooltipContent>Mute (M)</TooltipContent>
                 </Tooltip>
                 <div className="w-0 overflow-hidden transition-all duration-300 group-hover/vol:w-24 md:w-0 md:group-hover/vol:w-24">
                   <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
@@ -795,7 +790,7 @@ export default function VideoPlayer({
                         </Button>
                       </a>
                     </TooltipTrigger>
-                    <TooltipContent>Baixar</TooltipContent>
+                    <TooltipContent>Download</TooltipContent>
                   </Tooltip>
                   <div className="h-6 w-px bg-white/20" />
                 </>
@@ -809,15 +804,15 @@ export default function VideoPlayer({
                       </Button>
                     </PopoverTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>Configurações</TooltipContent>
+                  <TooltipContent>Settings</TooltipContent>
                 </Tooltip>
                 <PopoverContent className="w-56 border-zinc-700 bg-black/80 p-2 text-white backdrop-blur">
                   {hasNextEpisode && (
                     <>
-                      <div className="mb-2 px-1 text-xs font-semibold text-white/80">Controles</div>
+                      <div className="mb-2 px-1 text-xs font-semibold text-white/80">Controls</div>
                       <div className="flex flex-col gap-1">
                           <div className="flex items-center justify-between h-8 w-full px-1">
-                            <Label htmlFor="autoplay-switch" className="text-sm font-normal">Próximo ep. automático</Label>
+                            <Label htmlFor="autoplay-switch" className="text-sm font-normal">Autoplay next ep.</Label>
                             <Switch
                               id="autoplay-switch"
                               checked={isAutoplayEnabled}
@@ -827,7 +822,7 @@ export default function VideoPlayer({
                       </div>
                     </>
                   )}
-                  <div className="my-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
+                  <div className="my-2 px-1 text-xs font-semibold text-white/80">Speed</div>
                   <div className="flex flex-col gap-1">
                     {playbackRates.map((r) => (
                       <Button
@@ -865,7 +860,7 @@ export default function VideoPlayer({
                     {isFullscreen ? <Minimize className="h-5 w-5 md:h-6 md:w-6" /> : <Maximize className="h-5 w-5 md:h-6 md:w-6" />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Tela cheia (F)</TooltipContent>
+                <TooltipContent>Fullscreen (F)</TooltipContent>
               </Tooltip>
 
               {onClose && (
@@ -877,7 +872,7 @@ export default function VideoPlayer({
                         <X className="h-5 w-5 md:h-6 md:w-6" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Fechar</TooltipContent>
+                    <TooltipContent>Close</TooltipContent>
                   </Tooltip>
                 </>
               )}
