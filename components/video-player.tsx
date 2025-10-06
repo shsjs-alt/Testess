@@ -418,20 +418,21 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const activeElement = document.activeElement
+      const activeElement = document.activeElement;
       if (
         activeElement &&
         (activeElement.tagName === "INPUT" ||
           activeElement.tagName === "TEXTAREA" ||
           activeElement.getAttribute("role") === "slider")
       ) {
-        return
+        return;
       }
-
+  
       if (e.key === ' ' && !e.repeat) {
-        e.preventDefault()
-        if (!isPlaying || isSpeedingUpRef.current) return
-
+        e.preventDefault();
+        if (isSpeedingUpRef.current) return;
+  
+        // Inicia o timer para "manter pressionado para acelerar"
         spacebarDownTimer.current = setTimeout(() => {
           if (videoRef.current && isPlaying) {
             isSpeedingUpRef.current = true;
@@ -442,29 +443,31 @@ export default function VideoPlayer({
           }
         }, 200);
       }
-
+  
       switch (e.key.toLowerCase()) {
-        case "k": e.preventDefault(); togglePlay(); break
-        case "f": toggleFullscreen(); break
-        case "m": toggleMute(); break
-        case "p": togglePip(); break
-        case "arrowright": seek(10); break
-        case "arrowleft": seek(-10); break
-        case "arrowup": e.preventDefault(); handleVolumeChange([Math.min(1, volume + 0.1)]); break
-        case "arrowdown": e.preventDefault(); handleVolumeChange([Math.max(0, volume - 0.1)]); break
+        case "k": e.preventDefault(); togglePlay(); break;
+        case "f": toggleFullscreen(); break;
+        case "m": toggleMute(); break;
+        case "p": togglePip(); break;
+        case "arrowright": seek(10); break;
+        case "arrowleft": seek(-10); break;
+        case "arrowup": e.preventDefault(); handleVolumeChange([Math.min(1, volume + 0.1)]); break;
+        case "arrowdown": e.preventDefault(); handleVolumeChange([Math.max(0, volume - 0.1)]); break;
       }
-    }
-
+    };
+  
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') {
-        e.preventDefault()
+        e.preventDefault();
         if (spacebarDownTimer.current) {
           clearTimeout(spacebarDownTimer.current);
           spacebarDownTimer.current = null;
+          // Se não estiver acelerando, é um toque curto, então alterna play/pause
           if (!isSpeedingUpRef.current) {
             togglePlay();
           }
         }
+        // Se estava acelerando, volta à velocidade normal
         if (isSpeedingUpRef.current) {
           if (videoRef.current) {
             videoRef.current.playbackRate = originalRateRef.current;
@@ -475,15 +478,15 @@ export default function VideoPlayer({
         }
       }
     };
-
-    window.addEventListener("keydown", onKeyDown)
+  
+    window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     return () => {
-      window.removeEventListener("keydown", onKeyDown)
+      window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       if (spacebarDownTimer.current) clearTimeout(spacebarDownTimer.current);
-    }
-  }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying])
+    };
+  }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying]);
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration || !progressWrapRef.current) return;
@@ -584,9 +587,6 @@ export default function VideoPlayer({
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onEnded={handleEnded}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onTouchCancel={handleTouchEnd}
           preload="metadata"
           autoPlay
           playsInline
@@ -635,8 +635,8 @@ export default function VideoPlayer({
             onClick={togglePlay}
             className={cn(
               "absolute z-10 inset-0 m-auto h-16 w-16 rounded-full",
-              "bg-white/10 text-white ring-1 ring-white/20 backdrop-blur",
-              "flex items-center justify-center hover:bg-white/20 transition-colors",
+              "bg-zinc-800/80 text-white",
+              "flex items-center justify-center hover:bg-zinc-700/80 transition-colors",
             )}
           >
             <Play className="h-7 w-7" />
@@ -705,9 +705,27 @@ export default function VideoPlayer({
         </AnimatePresence>
 
         <div className="absolute inset-0 z-0 flex md:hidden">
-          <div className="flex-1" onClick={() => onMobileTap('left')} />
-          <div className="w-1/3" onClick={() => onMobileTap('center')} />
-          <div className="flex-1" onClick={() => onMobileTap('right')} />
+            <div
+                className="flex-1"
+                onClick={() => onMobileTap('left')}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
+            />
+            <div
+                className="w-1/3"
+                onClick={() => onMobileTap('center')}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
+            />
+            <div
+                className="flex-1"
+                onClick={() => onMobileTap('right')}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
+            />
         </div>
 
         <div
