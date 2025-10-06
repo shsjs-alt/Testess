@@ -20,6 +20,7 @@ type VideoPlayerProps = {
   rememberPosition?: boolean
   hasNextEpisode?: boolean
   onNextEpisode?: () => void
+  backdropPath?: string | null
 }
 
 export default function VideoPlayer({
@@ -31,6 +32,7 @@ export default function VideoPlayer({
   rememberPosition = true,
   hasNextEpisode,
   onNextEpisode,
+  backdropPath,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -58,7 +60,6 @@ export default function VideoPlayer({
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
   
-  // Estados para a reprodução automática
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
@@ -78,14 +79,12 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    // Reseta o estado para o novo episódio/filme
     setEndingTriggered(false);
     setShowNextEpisodeOverlay(false);
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
     
-    // Função de limpeza para pausar e limpar a fonte, prevenindo vazamentos de memória
     return () => {
       if (videoElement) {
         videoElement.pause();
@@ -330,13 +329,11 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
   
-    // Fullscreen específico para iOS
     if (video.webkitEnterFullscreen) {
         video.webkitEnterFullscreen();
         return;
     }
 
-    // API de Fullscreen padrão
     const container = containerRef.current;
     if (!container) return;
 
@@ -746,15 +743,22 @@ export default function VideoPlayer({
             onMouseLeave={onProgressLeave}
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
-             <div
-              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
-              style={{
-                left: hoverLeft,
-                visibility: hoverTime !== null ? 'visible' : 'hidden',
-              }}
-            >
-                {formatTime(hoverTime ?? 0)}
-            </div>
+            {hoverTime !== null && (
+              <div
+                className="absolute bottom-full mb-2 hidden -translate-x-1/2 flex-col items-center md:flex"
+                style={{ left: hoverLeft }}
+              >
+                <div
+                  className="h-[80px] w-[140px] rounded border-2 border-white bg-black bg-cover bg-center shadow-lg"
+                  style={{
+                    backgroundImage: backdropPath ? `url(https://image.tmdb.org/t/p/w300${backdropPath})` : 'none',
+                  }}
+                />
+                <span className="mt-1 rounded bg-black/80 px-1.5 py-0.5 text-xs text-white">
+                  {formatTime(hoverTime)}
+                </span>
+              </div>
+            )}
             
             <div className="relative flex items-center h-2.5 transition-[height] duration-200">
                 <div

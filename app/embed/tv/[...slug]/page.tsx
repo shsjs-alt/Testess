@@ -15,6 +15,7 @@ type Stream = {
 type StreamInfo = {
   streams: Stream[];
   title: string | null;
+  backdropPath: string | null;
 };
 
 type SeasonInfo = {
@@ -35,6 +36,7 @@ export default function TvEmbedPage() {
   const [loading, setLoading] = useState(true);
   const [mediaTitle, setMediaTitle] = useState('Episódio');
   const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
+  const [backdrop, setBackdrop] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tmdbId || !season || !episode) {
@@ -49,7 +51,6 @@ export default function TvEmbedPage() {
       setSeasonInfo(null);
       setStream(null);
       try {
-        // Fetch stream and season info in parallel
         const streamPromise = fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
         const seasonInfoPromise = fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}?api_key=${API_KEY}&language=pt-BR`);
 
@@ -65,6 +66,7 @@ export default function TvEmbedPage() {
         if (firstStream && firstStream.url) {
           setStream(firstStream);
           setMediaTitle(`${data.title || 'Série'} - T${season} E${episode}`);
+          setBackdrop(data.backdropPath);
         } else {
           setError("Nenhum link de streaming disponível para este episódio.");
         }
@@ -132,6 +134,7 @@ export default function TvEmbedPage() {
         <VideoPlayer
           src={stream.url}
           title={mediaTitle}
+          backdropPath={backdrop}
           downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
           rememberPosition={true}
           rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
