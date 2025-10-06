@@ -598,13 +598,19 @@ export default function VideoPlayer({
         />
 
         {(isLoading || isBuffering) && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
+          <div 
+            style={{ transform: 'translateZ(0)' }} 
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/50"
+          >
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-red-600/50 border-t-red-600" />
           </div>
         )}
 
         {error && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80">
+          <div 
+            style={{ transform: 'translateZ(0)' }} 
+            className="absolute inset-0 z-20 flex items-center justify-center bg-black/80"
+          >
             <div className="text-center text-white">
               <p className="mb-4 text-sm text-zinc-200">{error}</p>
               <div className="flex items-center justify-center gap-2">
@@ -624,6 +630,7 @@ export default function VideoPlayer({
 
         {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
           <button
+            style={{ transform: 'translateZ(0)' }}
             aria-label="Play"
             onClick={togglePlay}
             className={cn(
@@ -631,7 +638,6 @@ export default function VideoPlayer({
               "bg-white/10 text-white ring-1 ring-white/20 backdrop-blur",
               "flex items-center justify-center hover:bg-white/20 transition-colors",
             )}
-            style={{ height: 64, width: 64 }}
           >
             <Play className="h-7 w-7" />
           </button>
@@ -639,6 +645,7 @@ export default function VideoPlayer({
 
         {showContinueWatching && (
           <div
+            style={{ transform: 'translateZ(0)' }}
             className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70"
             ref={continueWatchingDialogRef}
           >
@@ -651,7 +658,10 @@ export default function VideoPlayer({
         )}
 
         {showSeekHint && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div 
+            style={{ transform: 'translateZ(0)' }} 
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+          >
             <div className="rounded-full bg-black/60 px-3 py-1 text-sm text-white ring-1 ring-white/10">
               {showSeekHint.dir === "fwd" ? "+10s" : "-10s"}
             </div>
@@ -661,6 +671,7 @@ export default function VideoPlayer({
         <AnimatePresence>
           {showSpeedHint && (
             <motion.div
+              style={{ transform: 'translateZ(0)' }}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
@@ -676,6 +687,7 @@ export default function VideoPlayer({
         <AnimatePresence>
           {showNextEpisodeOverlay && (
             <motion.div
+              style={{ transform: 'translateZ(0)' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -700,6 +712,7 @@ export default function VideoPlayer({
 
         <div
           data-controls
+          style={{ transform: 'translateZ(0)' }}
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 md:p-3 transition-opacity duration-300",
             "bg-gradient-to-t from-black/50 to-transparent",
