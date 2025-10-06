@@ -15,7 +15,6 @@ type Stream = {
 type StreamInfo = {
   streams: Stream[];
   title: string | null;
-  backdropPath: string | null;
 };
 
 type SeasonInfo = {
@@ -50,6 +49,7 @@ export default function TvEmbedPage() {
       setSeasonInfo(null);
       setStream(null);
       try {
+        // Fetch stream and season info in parallel
         const streamPromise = fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
         const seasonInfoPromise = fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}?api_key=${API_KEY}&language=pt-BR`);
 
