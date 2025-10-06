@@ -506,7 +506,8 @@ export default function VideoPlayer({
       if (side === 'right') seek(10);
       lastTapRef.current = { time: 0, side: 'center' };
     } else if (side === 'center') {
-      togglePlay();
+      // Em vez de pausar, apenas mostra os controles
+      resetControlsTimeout();
       lastTapRef.current = { time: now, side };
     } else {
       resetControlsTimeout();
