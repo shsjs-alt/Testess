@@ -20,7 +20,6 @@ type VideoPlayerProps = {
   rememberPosition?: boolean
   hasNextEpisode?: boolean
   onNextEpisode?: () => void
-  backdropPath?: string | null
 }
 
 export default function VideoPlayer({
@@ -32,12 +31,14 @@ export default function VideoPlayer({
   rememberPosition = true,
   hasNextEpisode,
   onNextEpisode,
-  backdropPath,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
+  const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
+  const thumbnailSeekTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(true)
   const [showControls, setShowControls] = useState(true)
@@ -56,6 +57,7 @@ export default function VideoPlayer({
   const [isPipActive, setIsPipActive] = useState(false)
 
   const [hoverTime, setHoverTime] = useState<number | null>(null)
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
@@ -93,6 +95,44 @@ export default function VideoPlayer({
       }
     };
   }, [src]);
+
+  useEffect(() => {
+    const thumbVideo = thumbnailVideoRef.current;
+    if (!thumbVideo) return;
+  
+    const onSeeked = () => {
+      const canvas = canvasRef.current;
+      if (canvas && thumbVideo) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(thumbVideo, 0, 0, canvas.width, canvas.height);
+          setThumbnailUrl(canvas.toDataURL());
+        }
+      }
+    };
+  
+    thumbVideo.addEventListener('seeked', onSeeked);
+    return () => {
+      thumbVideo.removeEventListener('seeked', onSeeked);
+    };
+  }, []);
+  
+  useEffect(() => {
+    if (thumbnailSeekTimeoutRef.current) {
+      clearTimeout(thumbnailSeekTimeoutRef.current);
+    }
+    
+    if (hoverTime !== null) {
+      thumbnailSeekTimeoutRef.current = setTimeout(() => {
+        const thumbVideo = thumbnailVideoRef.current;
+        if (thumbVideo) {
+          thumbVideo.currentTime = hoverTime;
+        }
+      }, 100); // Pequeno delay para não sobrecarregar
+    } else {
+      setThumbnailUrl(null);
+    }
+  }, [hoverTime]);
 
   useEffect(() => {
     try {
@@ -590,7 +630,19 @@ export default function VideoPlayer({
           preload="metadata"
           autoPlay
           playsInline
+          crossOrigin="anonymous" 
         />
+        
+        <video
+          ref={thumbnailVideoRef}
+          src={src}
+          className="pointer-events-none absolute left-0 top-0 hidden h-0 w-0"
+          preload="metadata"
+          muted
+          crossOrigin="anonymous"
+        />
+        <canvas ref={canvasRef} className="hidden" width="160" height="90" />
+
 
         <div
           className="absolute inset-0 z-0"
@@ -746,14 +798,19 @@ export default function VideoPlayer({
             {hoverTime !== null && (
               <div
                 className="absolute bottom-full mb-2 hidden -translate-x-1/2 flex-col items-center md:flex"
-                style={{ left: hoverLeft }}
+                style={{ left: hoverLeft, visibility: thumbnailUrl ? 'visible' : 'hidden' }}
               >
-                <div
-                  className="h-[80px] w-[140px] rounded border-2 border-white bg-black bg-cover bg-center shadow-lg"
-                  style={{
-                    backgroundImage: backdropPath ? `url(https://image.tmdb.org/t/p/w300${backdropPath})` : 'none',
-                  }}
-                />
+                {thumbnailUrl ? (
+                  <img
+                    src={thumbnailUrl}
+                    alt="Video thumbnail"
+                    className="h-[90px] w-[160px] rounded border-2 border-white bg-black shadow-lg"
+                  />
+                ) : (
+                  <div className="h-[90px] w-[160px] rounded border-2 border-white bg-black shadow-lg flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-white" />
+                  </div>
+                )}
                 <span className="mt-1 rounded bg-black/80 px-1.5 py-0.5 text-xs text-white">
                   {formatTime(hoverTime)}
                 </span>

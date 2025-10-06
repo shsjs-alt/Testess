@@ -22,7 +22,6 @@ export default function MovieEmbedPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mediaTitle, setMediaTitle] = useState('Filme');
-  const [backdrop, setBackdrop] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tmdbId) {
@@ -46,7 +45,6 @@ export default function MovieEmbedPage() {
         if (firstStream && firstStream.url) {
           setStream(firstStream);
           setMediaTitle(data.title || "Filme");
-          setBackdrop(data.backdropPath);
         } else {
           setError("Nenhum link de streaming disponível para este filme.");
         }
@@ -99,7 +97,6 @@ export default function MovieEmbedPage() {
         <VideoPlayer
           src={stream.url}
           title={mediaTitle}
-          backdropPath={backdrop}
           downloadUrl={`/download/movies/${tmdbId}`}
           rememberPosition={true}
           rememberPositionKey={`movie-${tmdbId}`}
