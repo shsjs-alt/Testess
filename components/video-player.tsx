@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils"
 
 type VideoPlayerProps = {
-  src: string
+  src?: string | null
   title: string
   downloadUrl?: string
   onClose?: () => void
@@ -61,10 +61,6 @@ export default function VideoPlayer({
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
-  const [downloadSpeed, setDownloadSpeed] = useState(0);
-  
-  const lastLoadTimeRef = useRef(0);
-  const lastLoadedBytesRef = useRef(0);
 
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
@@ -78,6 +74,9 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const videoElement = videoRef.current;
+    if (src && videoElement) {
+        videoElement.src = src;
+    }
     return () => {
       if (videoElement) {
         videoElement.pause();
@@ -116,8 +115,8 @@ export default function VideoPlayer({
     if (!rememberPosition) return
     const id = setInterval(() => {
       try {
-        if (videoRef.current) {
-          localStorage.setItem(positionKey, String(videoRef.current.currentTime || 0))
+        if (videoRef.current && videoRef.current.currentTime > 0) {
+          localStorage.setItem(positionKey, String(videoRef.current.currentTime))
         }
       } catch (e) {
         // no-op
@@ -182,42 +181,6 @@ export default function VideoPlayer({
     setIsBuffering(false)
     setError("Não foi possível carregar o vídeo.")
   }
-
-  const handleProgress = () => {
-    const video = videoRef.current;
-    if (!video || video.readyState < 2) return;
-
-    const currentTime = performance.now();
-    let loadedBytes = 0;
-    try {
-        // Acessa o buffer de vídeo
-        const buffered = video.buffered;
-        if (buffered.length > 0) {
-            // Soma o total de bytes carregados em todos os ranges
-            for (let i = 0; i < buffered.length; i++) {
-                // Para simplificar, consideramos o final do último buffer como o total carregado
-                loadedBytes = buffered.end(i) * 100000; // Estimativa de bytes
-            }
-        }
-    } catch (e) {
-        // Em alguns casos, acessar 'buffered' pode dar erro, então ignoramos.
-        return;
-    }
-
-
-    if (lastLoadTimeRef.current > 0) {
-        const deltaTime = (currentTime - lastLoadTimeRef.current) / 1000; // em segundos
-        const deltaBytes = loadedBytes - lastLoadedBytesRef.current;
-
-        if (deltaTime > 0 && deltaBytes > 0) {
-            const speed = deltaBytes / deltaTime; // Bytes por segundo
-            setDownloadSpeed(speed);
-        }
-    }
-
-    lastLoadTimeRef.current = currentTime;
-    lastLoadedBytesRef.current = loadedBytes;
-};
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
@@ -382,20 +345,12 @@ export default function VideoPlayer({
     const ss = String(seconds).padStart(2, "0")
     return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
   }
-  const formatSpeed = (bytesPerSecond: number) => {
-    if (bytesPerSecond === 0) return "0 Kb/s";
-    
-    const kbs = bytesPerSecond / 1024;
-    const mbs = kbs / 1024;
 
-    if (mbs >= 1) {
-        return `${mbs.toFixed(2)} Mbps`;
-    } else {
-        return `${kbs.toFixed(2)} Kb/s`;
-    }
-  };
   const retry = () => {
-    if (videoRef.current) videoRef.current.load()
+    if (videoRef.current && src) {
+        videoRef.current.src = src;
+        videoRef.current.load();
+    }
   }
 
   useEffect(() => {
@@ -553,7 +508,6 @@ export default function VideoPlayer({
       >
         <video
           ref={videoRef}
-          src={src}
           className="h-full w-full object-contain"
           onLoadStart={handleLoadStart}
           onCanPlay={handleCanPlay}
@@ -565,7 +519,6 @@ export default function VideoPlayer({
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onEnded={handleEnded}
-          onProgress={handleProgress}
           preload="metadata"
           autoPlay={!isIphone}
           playsInline
@@ -576,15 +529,12 @@ export default function VideoPlayer({
           onClick={handleMainClick}
         />
 
-        {(isLoading || isBuffering) && (
+        {(isLoading || isBuffering || !src) && (
             <div 
                 style={{ transform: 'translateZ(0)' }} 
                 className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center"
             >
                 <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/50 border-t-white" />
-                <span className="mt-4 text-white text-sm font-semibold text-shadow">
-                    {formatSpeed(downloadSpeed)}
-                </span>
             </div>
         )}
 
@@ -610,7 +560,7 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {!isLoading && !error && !isPlaying && (
+        {!isLoading && !error && !isPlaying && src && (
           <button
             style={{ transform: 'translateZ(0)' }}
             aria-label="Play"
@@ -740,7 +690,7 @@ export default function VideoPlayer({
             <div className="flex items-center gap-1 md:gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15" disabled={!src}>
                     {isPlaying ? <Pause className="h-5 w-5 md:h-6 md:w-6" /> : <Play className="h-5 w-5 md:h-6 md:w-6" />}
                   </Button>
                 </TooltipTrigger>
