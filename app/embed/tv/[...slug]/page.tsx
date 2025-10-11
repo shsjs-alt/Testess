@@ -61,7 +61,7 @@ export default function TvEmbedPage() {
       try {
         const currentEpisodeNum = parseInt(episode, 10);
         
-        // Fetch stream and season info in parallel
+        // Busca o stream e as informações da temporada em paralelo
         const streamPromise = fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
         const seasonInfoPromise = fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}?api_key=${API_KEY}&language=pt-BR`);
 
@@ -85,7 +85,7 @@ export default function TvEmbedPage() {
             const seasonData = await seasonInfoRes.json();
             setSeasonInfo(seasonData);
 
-            // Check and fetch next episode info
+            // Verifica e busca as informações do próximo episódio
             const hasNext = currentEpisodeNum < seasonData.episode_count;
             if (hasNext) {
                 const nextEpisodeNum = currentEpisodeNum + 1;
@@ -124,6 +124,7 @@ export default function TvEmbedPage() {
   const playNextEpisode = () => {
     if (hasNextEpisode) {
       const nextEpisode = parseInt(episode, 10) + 1;
+      // Navega para a URL do próximo episódio, o que fará a página recarregar com os novos dados
       router.push(`/embed/tv/${tmdbId}/${season}/${nextEpisode}`);
     }
   };
@@ -178,4 +179,3 @@ export default function TvEmbedPage() {
 
   return null;
 }
-

@@ -69,7 +69,7 @@ export default function VideoPlayer({
   
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
-  const [countdown, setCountdown] = useState(5)
+  const [countdown, setCountdown] = useState(5) // Contagem inicial de 5 segundos
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
@@ -225,7 +225,7 @@ export default function VideoPlayer({
     setIsPlaying(false);
     if (hasNextEpisode && isAutoplayEnabled) {
       setShowNextEpisodeOverlay(true);
-      setCountdown(5);
+      setCountdown(5); // Garante que a contagem comece em 5
     }
   };
 
