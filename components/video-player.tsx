@@ -1,3 +1,4 @@
+// components/video-player.tsx
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
@@ -37,7 +38,7 @@ export default function VideoPlayer({
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
 
-  const [isPlaying, setIsPlaying] = useState(true)
+  const [isPlaying, setIsPlaying] = useState(false);
   const [showControls, setShowControls] = useState(true)
 
   const [currentTime, setCurrentTime] = useState(0)
@@ -63,6 +64,14 @@ export default function VideoPlayer({
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
   const [endingTriggered, setEndingTriggered] = useState(false);
+
+  const isIphone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent);
+
+  useEffect(() => {
+      if (!isIphone) {
+          setIsPlaying(true);
+      }
+  }, [isIphone]);
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
@@ -193,7 +202,7 @@ export default function VideoPlayer({
     setIsLoading(false)
     setIsBuffering(false)
     const v = videoRef.current;
-    if (v && !showContinueWatching) {
+    if (v && !showContinueWatching && !isIphone) {
       v.play().then(() => {
         setIsPlaying(true);
       }).catch(err => {
@@ -591,7 +600,7 @@ export default function VideoPlayer({
           onPause={() => setIsPlaying(false)}
           onEnded={handleEnded}
           preload="metadata"
-          autoPlay
+          autoPlay={!isIphone}
           playsInline
         />
 
