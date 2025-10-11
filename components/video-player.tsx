@@ -1,4 +1,3 @@
-// PrimeVicio - Site/components/video-player.tsx
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
@@ -70,12 +69,13 @@ export default function VideoPlayer({
   
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
-  const [countdown, setCountdown] = useState(5) // Contagem inicial de 5 segundos
+  const [countdown, setCountdown] = useState(5)
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || src}`
   
+  const endTriggeredRef = useRef(false);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -87,6 +87,7 @@ export default function VideoPlayer({
   useEffect(() => {
     const videoElement = videoRef.current;
     setShowNextEpisodeOverlay(false);
+    endTriggeredRef.current = false;
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
@@ -201,24 +202,23 @@ export default function VideoPlayer({
     setError("Não foi possível carregar o vídeo.")
   }
 
+  const triggerNextEpisode = useCallback(() => {
+    if (endTriggeredRef.current) return;
+    if (hasNextEpisode && isAutoplayEnabled) {
+      endTriggeredRef.current = true;
+      setShowNextEpisodeOverlay(true);
+      setCountdown(5);
+    }
+  }, [hasNextEpisode, isAutoplayEnabled]);
+
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const { currentTime, duration } = videoRef.current;
     setCurrentTime(currentTime);
-    
-    // --- LÓGICA DE CORREÇÃO ---
-    // Aciona a tela de próximo episódio um pouco antes do fim para garantir a exibição.
-    if (
-      duration > 0 &&
-      currentTime >= duration - 2 && // Aciona nos últimos 2 segundos
-      !showNextEpisodeOverlay && // Garante que seja acionado apenas uma vez
-      hasNextEpisode && 
-      isAutoplayEnabled
-    ) {
-      setShowNextEpisodeOverlay(true);
-      setCountdown(5);
+
+    if (duration > 0 && (currentTime === duration || currentTime >= duration - 0.5)) {
+        triggerNextEpisode();
     }
-    // --- FIM DA LÓGICA DE CORREÇÃO ---
     
     try {
       const buf = videoRef.current.buffered;
@@ -239,11 +239,7 @@ export default function VideoPlayer({
 
   const handleEnded = () => {
     setIsPlaying(false);
-    // Aciona apenas se a tela de próximo episódio ainda não estiver visível
-    if (hasNextEpisode && isAutoplayEnabled && !showNextEpisodeOverlay) {
-      setShowNextEpisodeOverlay(true);
-      setCountdown(5);
-    }
+    triggerNextEpisode();
   };
 
   const handlePlayNext = useCallback(() => {
@@ -258,7 +254,6 @@ export default function VideoPlayer({
     setShowNextEpisodeOverlay(false);
     setShowControls(true)
     if (videoRef.current) {
-      // Define o tempo para o final exato para evitar que o vídeo reinicie
       videoRef.current.currentTime = videoRef.current.duration;
     }
     if (countdownIntervalRef.current) {
@@ -311,8 +306,8 @@ export default function VideoPlayer({
     v.currentTime = newTime;
     setShowSeekHint({ dir: amount > 0 ? "fwd" : "back", by: Math.abs(amount) })
     setTimeout(() => setShowSeekHint(null), 700)
-    // Se o usuário pular para trás, esconde a tela de próximo episódio
     if (v.duration - newTime > 10) {
+      endTriggeredRef.current = false;
       setShowNextEpisodeOverlay(false);
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
@@ -324,8 +319,8 @@ export default function VideoPlayer({
     const v = videoRef.current
     if (!v) return
     const newTime = value[0]
-    // Se o usuário pular para trás, esconde a tela de próximo episódio
     if (v.duration - newTime > 10) {
+      endTriggeredRef.current = false;
       setShowNextEpisodeOverlay(false);
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
