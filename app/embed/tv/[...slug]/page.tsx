@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-import VideoPlayer from '@/components/video-player';
+import VideoPlayer from '../../../../components/video-player';
 
 type Stream = {
   url: string;
@@ -178,3 +178,4 @@ export default function TvEmbedPage() {
 
   return null;
 }
+
