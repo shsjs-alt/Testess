@@ -202,14 +202,8 @@ export default function VideoPlayer({
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-    const { currentTime, duration } = videoRef.current;
-    setCurrentTime(currentTime);
-
-    if (duration > 0 && duration - currentTime < 7 && !showNextEpisodeOverlay && isAutoplayEnabled && hasNextEpisode) {
-      setShowNextEpisodeOverlay(true);
-      setCountdown(5);
-    }
-  
+    setCurrentTime(videoRef.current.currentTime);
+    
     try {
       const buf = videoRef.current.buffered;
       if (buf && buf.length > 0) {
@@ -229,7 +223,7 @@ export default function VideoPlayer({
 
   const handleEnded = () => {
     setIsPlaying(false);
-    if (!showNextEpisodeOverlay && isAutoplayEnabled && hasNextEpisode) {
+    if (hasNextEpisode && isAutoplayEnabled) {
       setShowNextEpisodeOverlay(true);
       setCountdown(5);
     }
