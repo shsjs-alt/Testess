@@ -242,8 +242,8 @@ export default function VideoPlayer({
   }
 
   const handleEnded = () => {
-    triggerNextEpisodeOverlay();
     setIsPlaying(false)
+    triggerNextEpisodeOverlay();
   };
 
   const handlePlayNext = useCallback(() => {
@@ -963,3 +963,4 @@ export default function VideoPlayer({
     </TooltipProvider>
   )
 }
+
