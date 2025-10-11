@@ -99,15 +99,17 @@ export async function GET(
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
     try {
         const roxanoResponse = await Promise.race([
-            fetch(roxanoUrl),
-            timeout(4000)
+            fetch(roxanoUrl, { redirect: 'follow' }), // Segue explicitamente os redirecionamentos
+            timeout(5000) // Aumentado ligeiramente o timeout para mais robustez
         ]) as Response;
       
         if (roxanoResponse.ok) {
-            console.log(`[Série ${tmdbId}] Sucesso com o fallback da API Principal (Roxano) para S${season}E${episode}.`);
+            const finalUrl = roxanoResponse.url; // Pega a URL final após os redirecionamentos
+            console.log(`[Série ${tmdbId}] Sucesso com a API Principal (Roxano) para S${season}E${episode}. URL Final: ${finalUrl}`);
             const stream = {
                 playerType: "custom",
-                url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+                // Envia a URL final para o proxy, igual à lógica dos filmes
+                url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalUrl)}`,
                 name: `Servidor Principal (T${season} E${episode})`,
             };
             return NextResponse.json({ streams: [stream], ...mediaInfo });

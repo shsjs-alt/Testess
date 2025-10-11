@@ -36,8 +36,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
                 });
             }
             
-            // --- MODIFICAÇÃO IMPORTANTE AQUI ---
-            // Decodificamos a URL primeiro para evitar dupla codificação, depois codificamos novamente de forma segura.
             const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
 
             const firestoreStream = {
@@ -105,15 +103,17 @@ export async function GET(
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
     try {
         const roxanoResponse = await Promise.race([
-            fetch(roxanoUrl),
-            timeout(4000)
+            fetch(roxanoUrl, { redirect: 'follow' }), // Segue os redirecionamentos
+            timeout(5000)
         ]) as Response;
 
         if (roxanoResponse.ok) {
-            console.log(`[Filme ${tmdbId}] Sucesso com o fallback da API Principal (Roxano).`);
+            const finalUrl = roxanoResponse.url; // Pega a URL final após os redirecionamentos
+            console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
             const stream = {
                 playerType: "custom",
-                url: `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`,
+                // Envia a URL final para o proxy
+                url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalUrl)}`,
                 name: "Servidor Principal",
             };
             return NextResponse.json({ streams: [stream], ...mediaInfo });

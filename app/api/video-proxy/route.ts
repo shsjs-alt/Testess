@@ -6,9 +6,8 @@ export const runtime = "edge";
 
 export async function GET(request: NextRequest) {
   // 1. Verificação de segurança (Referer)
-  // Isto ainda impede que outros sites usem o seu link de embed diretamente.
   const referer = request.headers.get("referer");
-  const allowedReferer = process.env.ALLOWED_REFERER; // Lembre-se de configurar esta variável no seu Vercel
+  const allowedReferer = process.env.ALLOWED_REFERER;
 
   if (allowedReferer && (!referer || !referer.startsWith(allowedReferer))) {
     return new NextResponse("Acesso Negado.", { status: 403 });
@@ -22,10 +21,8 @@ export async function GET(request: NextRequest) {
     return new NextResponse("URL do vídeo não foi fornecida.", { status: 400 });
   }
 
-  // 3. Redirecionar o navegador do utilizador para a URL final do vídeo
-  // Esta é a abordagem que garante que o vídeo toque.
+  // 3. Redirecionamento simples e direto para a URL do vídeo
   try {
-    // O código 307 (Redirecionamento Temporário) é o mais apropriado aqui.
     return NextResponse.redirect(new URL(videoUrl), 307);
   } catch (error) {
     console.error("URL de redirecionamento inválida:", videoUrl, error);
