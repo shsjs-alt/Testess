@@ -20,6 +20,12 @@ type VideoPlayerProps = {
   rememberPosition?: boolean
   hasNextEpisode?: boolean
   onNextEpisode?: () => void
+  nextEpisodeInfo?: {
+    title: string;
+    coverUrl: string;
+    season: number;
+    episode: number;
+  }
 }
 
 export default function VideoPlayer({
@@ -31,6 +37,7 @@ export default function VideoPlayer({
   rememberPosition = true,
   hasNextEpisode,
   onNextEpisode,
+  nextEpisodeInfo,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -178,13 +185,13 @@ export default function VideoPlayer({
   }, [resetControlsTimeout, hideControls]);
 
   const triggerNextEpisodeOverlay = useCallback(() => {
-    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) {
+    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode || !nextEpisodeInfo) {
         return;
     }
     setEndingTriggered(true);
     setShowNextEpisodeOverlay(true);
     setCountdown(5);
-  }, [endingTriggered, isAutoplayEnabled, hasNextEpisode, onNextEpisode]);
+  }, [endingTriggered, isAutoplayEnabled, hasNextEpisode, onNextEpisode, nextEpisodeInfo]);
 
 
   const handleLoadStart = () => {
@@ -248,7 +255,11 @@ export default function VideoPlayer({
     setShowNextEpisodeOverlay(false);
     setShowControls(true)
     if (videoRef.current) {
+      // Go to the very end of the video
       videoRef.current.currentTime = videoRef.current.duration;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
     }
   };
   
@@ -691,21 +702,46 @@ export default function VideoPlayer({
         </AnimatePresence>
         
         <AnimatePresence>
-          {showNextEpisodeOverlay && (
+          {showNextEpisodeOverlay && nextEpisodeInfo && (
             <motion.div
               style={{ transform: 'translateZ(0)' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90"
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/95 p-4 text-center font-['Inter',_sans-serif]"
             >
-              <p className="text-white text-lg mb-6 font-semibold">
-                Próximo episódio em {countdown}
-              </p>
-              <div className="flex gap-4">
-                <Button onClick={handlePlayNext} className="bg-white text-black hover:bg-zinc-200">Assistir</Button>
-                <Button onClick={handleCancelAutoplay} variant="secondary">Cancelar</Button>
+              <h1 className="text-2xl md:text-3xl font-medium mb-8 text-gray-200">
+                O Próximo Episódio Será Reproduzido em <span className="font-bold">{countdown}</span>s
+              </h1>
+
+              <div className="max-w-xs w-full bg-gray-900/50 rounded-lg overflow-hidden shadow-2xl shadow-gray-900/50">
+                  <img 
+                      src={nextEpisodeInfo.coverUrl} 
+                      alt={`Capa do episódio ${nextEpisodeInfo.title}`}
+                      className="w-full h-auto object-cover border-2 border-gray-600"
+                      style={{ boxShadow: '0 0 20px 10px rgba(128, 128, 128, 0.7)'}}
+                      onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.onerror = null;
+                          target.src='https://placehold.co/600x400/000000/FFFFFF?text=Imagem+Indisponível';
+                      }}
+                  />
+                  <div className="p-4">
+                      <h2 className="text-lg md:text-xl font-bold text-white">
+                          {`EP${nextEpisodeInfo.episode} T${nextEpisodeInfo.season}: ${nextEpisodeInfo.title}`}
+                      </h2>
+                  </div>
               </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8 w-full max-w-lg">
+                  <Button onClick={handlePlayNext} className="w-full sm:w-auto flex-1 bg-white text-black font-bold py-3 px-8 rounded-lg hover:bg-gray-200 transition-all duration-300 transform hover:scale-105">
+                      Reproduzir
+                  </Button>
+                  <Button onClick={handleCancelAutoplay} variant="secondary" className="w-full sm:w-auto flex-1 bg-gray-700/80 text-white font-bold py-3 px-8 rounded-lg hover:bg-gray-600/80 transition-all duration-300">
+                      Cancelar
+                  </Button>
+              </div>
+
             </motion.div>
           )}
         </AnimatePresence>
