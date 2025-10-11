@@ -1,3 +1,4 @@
+// PrimeVicio - Site/components/video-player.tsx
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
@@ -202,7 +203,22 @@ export default function VideoPlayer({
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-    setCurrentTime(videoRef.current.currentTime);
+    const { currentTime, duration } = videoRef.current;
+    setCurrentTime(currentTime);
+    
+    // --- LÓGICA DE CORREÇÃO ---
+    // Aciona a tela de próximo episódio um pouco antes do fim para garantir a exibição.
+    if (
+      duration > 0 &&
+      currentTime >= duration - 2 && // Aciona nos últimos 2 segundos
+      !showNextEpisodeOverlay && // Garante que seja acionado apenas uma vez
+      hasNextEpisode && 
+      isAutoplayEnabled
+    ) {
+      setShowNextEpisodeOverlay(true);
+      setCountdown(5);
+    }
+    // --- FIM DA LÓGICA DE CORREÇÃO ---
     
     try {
       const buf = videoRef.current.buffered;
@@ -223,9 +239,10 @@ export default function VideoPlayer({
 
   const handleEnded = () => {
     setIsPlaying(false);
-    if (hasNextEpisode && isAutoplayEnabled) {
+    // Aciona apenas se a tela de próximo episódio ainda não estiver visível
+    if (hasNextEpisode && isAutoplayEnabled && !showNextEpisodeOverlay) {
       setShowNextEpisodeOverlay(true);
-      setCountdown(5); // Garante que a contagem comece em 5
+      setCountdown(5);
     }
   };
 
@@ -241,6 +258,7 @@ export default function VideoPlayer({
     setShowNextEpisodeOverlay(false);
     setShowControls(true)
     if (videoRef.current) {
+      // Define o tempo para o final exato para evitar que o vídeo reinicie
       videoRef.current.currentTime = videoRef.current.duration;
     }
     if (countdownIntervalRef.current) {
@@ -293,6 +311,7 @@ export default function VideoPlayer({
     v.currentTime = newTime;
     setShowSeekHint({ dir: amount > 0 ? "fwd" : "back", by: Math.abs(amount) })
     setTimeout(() => setShowSeekHint(null), 700)
+    // Se o usuário pular para trás, esconde a tela de próximo episódio
     if (v.duration - newTime > 10) {
       setShowNextEpisodeOverlay(false);
       if (countdownIntervalRef.current) {
@@ -305,6 +324,7 @@ export default function VideoPlayer({
     const v = videoRef.current
     if (!v) return
     const newTime = value[0]
+    // Se o usuário pular para trás, esconde a tela de próximo episódio
     if (v.duration - newTime > 10) {
       setShowNextEpisodeOverlay(false);
       if (countdownIntervalRef.current) {
