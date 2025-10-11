@@ -58,15 +58,7 @@ export default function MovieEmbedPage() {
     fetchMovieData();
   }, [tmdbId]);
 
-  if (loading) {
-    return (
-      <main className="w-screen h-screen flex items-center justify-center bg-black">
-        <Loader2 className="w-12 h-12 animate-spin text-white" />
-      </main>
-    );
-  }
-
-  if (error) {
+  if (error && !loading) {
     return (
       <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
         <Clapperboard className="w-16 h-16 text-zinc-700 mb-4" />
@@ -76,34 +68,16 @@ export default function MovieEmbedPage() {
     );
   }
 
-  if (stream) {
-    if (stream.playerType === 'gdrive') {
-      return (
-        <main className="w-screen h-screen relative bg-black">
-          <iframe
-            src={stream.url}
-            className="w-full h-full border-0"
-            allow="autoplay; fullscreen"
-            allowFullScreen
-          ></iframe>
-          {/* Div para cobrir o botão "abrir em nova guia" do Google Drive */}
-          <div className="absolute top-0 right-0 w-16 h-14 bg-black z-10"></div>
-        </main>
-      );
-    }
-    
-    return (
-      <main className="w-screen h-screen relative bg-black">
-        <VideoPlayer
-          src={stream.url}
-          title={mediaTitle}
-          downloadUrl={`/download/movies/${tmdbId}`}
-          rememberPosition={true}
-          rememberPositionKey={`movie-${tmdbId}`}
-        />
-      </main>
-    );
-  }
-
-  return null;
+  // Renderiza o player diretamente, que gerenciará seu próprio estado de loading.
+  return (
+    <main className="w-screen h-screen relative bg-black">
+      <VideoPlayer
+        src={stream ? stream.url : ""} // Passa a URL do stream ou uma string vazia
+        title={mediaTitle}
+        downloadUrl={`/download/movies/${tmdbId}`}
+        rememberPosition={true}
+        rememberPositionKey={`movie-${tmdbId}`}
+      />
+    </main>
+  );
 }

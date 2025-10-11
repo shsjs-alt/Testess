@@ -61,7 +61,6 @@ export default function TvEmbedPage() {
       try {
         const currentEpisodeNum = parseInt(episode, 10);
         
-        // Busca o stream e as informações da temporada em paralelo
         const streamPromise = fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
         const seasonInfoPromise = fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}?api_key=${API_KEY}&language=pt-BR`);
 
@@ -85,7 +84,6 @@ export default function TvEmbedPage() {
             const seasonData = await seasonInfoRes.json();
             setSeasonInfo(seasonData);
 
-            // Verifica e busca as informações do próximo episódio
             const hasNext = currentEpisodeNum < seasonData.episode_count;
             if (hasNext) {
                 const nextEpisodeNum = currentEpisodeNum + 1;
@@ -117,27 +115,18 @@ export default function TvEmbedPage() {
     };
 
     fetchAllData();
-  }, [tmdbId, season, episode]);
+  }, [tmdbId, season, episode, router]);
 
   const hasNextEpisode = !!nextEpisodeInfo;
 
   const playNextEpisode = () => {
     if (hasNextEpisode) {
       const nextEpisode = parseInt(episode, 10) + 1;
-      // Navega para a URL do próximo episódio, o que fará a página recarregar com os novos dados
       router.push(`/embed/tv/${tmdbId}/${season}/${nextEpisode}`);
     }
   };
   
-  if (loading) {
-    return (
-      <main className="w-screen h-screen flex items-center justify-center bg-black">
-        <Loader2 className="w-12 h-12 animate-spin text-white" />
-      </main>
-    );
-  }
-
-  if (error) {
+  if (error && !loading) {
     return (
       <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
         <Clapperboard className="w-16 h-16 text-zinc-700 mb-4" />
@@ -146,36 +135,19 @@ export default function TvEmbedPage() {
       </main>
     );
   }
-
-  if (stream) {
-    if (stream.playerType === 'gdrive') {
-      return (
-        <main className="w-screen h-screen relative bg-black">
-          <iframe
-            src={stream.url}
-            className="w-full h-full border-0"
-            allow="autoplay; fullscreen"
-            allowFullScreen
-          ></iframe>
-        </main>
-      );
-    }
-    
-    return (
-      <main className="w-screen h-screen relative bg-black">
-        <VideoPlayer
-          src={stream.url}
-          title={mediaTitle}
-          downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
-          rememberPosition={true}
-          rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
-          hasNextEpisode={hasNextEpisode}
-          onNextEpisode={playNextEpisode}
-          nextEpisodeInfo={nextEpisodeInfo || undefined}
-        />
-      </main>
-    );
-  }
-
-  return null;
+  
+  return (
+    <main className="w-screen h-screen relative bg-black">
+      <VideoPlayer
+        src={stream ? stream.url : ""}
+        title={mediaTitle}
+        downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
+        rememberPosition={true}
+        rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
+        hasNextEpisode={hasNextEpisode}
+        onNextEpisode={playNextEpisode}
+        nextEpisodeInfo={nextEpisodeInfo || undefined}
+      />
+    </main>
+  );
 }
