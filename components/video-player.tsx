@@ -41,7 +41,7 @@ export default function VideoPlayer({
 
   const isIphone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent);
 
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(!isIphone);
   const [showControls, setShowControls] = useState(true)
 
   const [currentTime, setCurrentTime] = useState(0)
@@ -61,15 +61,11 @@ export default function VideoPlayer({
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
-
-  // Estados para o contador de download
-  const [downloadSpeed, setDownloadSpeed] = useState(0); // Em bytes/s
-  const [totalLoaded, setTotalLoaded] = useState(0); // Em bytes
-  const [videoSize, setVideoSize] = useState(0); // Em bytes
-
-  const lastLoadedBytesRef = useRef(0);
-  const lastProgressTimeRef = useRef(0);
+  const [downloadSpeed, setDownloadSpeed] = useState(0);
   
+  const lastLoadTimeRef = useRef(0);
+  const lastLoadedBytesRef = useRef(0);
+
   const volumeKey = "video-player-volume"
   const positionKey = `video-pos:${rememberPositionKey || src}`
   
@@ -79,31 +75,6 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (!src) {
-        setIsLoading(true);
-        return;
-    }
-
-    setIsLoading(true);
-    setVideoSize(0);
-    setTotalLoaded(0);
-    setDownloadSpeed(0);
-
-    const fetchVideoSize = async () => {
-        try {
-            const response = await fetch(src, { method: 'HEAD' });
-            const contentLength = response.headers.get('Content-Length');
-            if (contentLength) {
-                setVideoSize(parseInt(contentLength, 10));
-            }
-        } catch (e) {
-            console.warn("Não foi possível obter o tamanho do vídeo (CORS pode estar bloqueando).");
-        }
-    };
-    fetchVideoSize();
-  }, [src]);
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -199,7 +170,7 @@ export default function VideoPlayer({
     setIsLoading(false)
     setIsBuffering(false)
     const v = videoRef.current;
-    if (v && !showContinueWatching && !isIphone) {
+    if (v && !showContinueWatching && isPlaying) {
       v.play().catch(err => {
         console.warn("Autoplay foi impedido:", err)
         setIsPlaying(false);
@@ -214,31 +185,39 @@ export default function VideoPlayer({
 
   const handleProgress = () => {
     const video = videoRef.current;
-    if (!video || !duration || !videoSize) return;
+    if (!video || video.readyState < 2) return;
 
+    const currentTime = performance.now();
+    let loadedBytes = 0;
     try {
-        if (video.buffered.length > 0) {
-            const bufferedEnd = video.buffered.end(video.buffered.length - 1);
-            const loadedPercentage = bufferedEnd / duration;
-            const loadedBytes = videoSize * loadedPercentage;
-            
-            const now = performance.now();
-            const timeDiff = (now - lastProgressTimeRef.current) / 1000;
-
-            if (timeDiff > 0) {
-                const bytesDiff = loadedBytes - lastLoadedBytesRef.current;
-                const speed = bytesDiff / timeDiff;
-                setDownloadSpeed(speed);
+        // Acessa o buffer de vídeo
+        const buffered = video.buffered;
+        if (buffered.length > 0) {
+            // Soma o total de bytes carregados em todos os ranges
+            for (let i = 0; i < buffered.length; i++) {
+                // Para simplificar, consideramos o final do último buffer como o total carregado
+                loadedBytes = buffered.end(i) * 100000; // Estimativa de bytes
             }
-
-            setTotalLoaded(loadedBytes);
-            lastLoadedBytesRef.current = loadedBytes;
-            lastProgressTimeRef.current = now;
         }
     } catch (e) {
-        // Ignora erros ao acessar 'buffered'
+        // Em alguns casos, acessar 'buffered' pode dar erro, então ignoramos.
+        return;
     }
-  };
+
+
+    if (lastLoadTimeRef.current > 0) {
+        const deltaTime = (currentTime - lastLoadTimeRef.current) / 1000; // em segundos
+        const deltaBytes = loadedBytes - lastLoadedBytesRef.current;
+
+        if (deltaTime > 0 && deltaBytes > 0) {
+            const speed = deltaBytes / deltaTime; // Bytes por segundo
+            setDownloadSpeed(speed);
+        }
+    }
+
+    lastLoadTimeRef.current = currentTime;
+    lastLoadedBytesRef.current = loadedBytes;
+};
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
@@ -403,23 +382,18 @@ export default function VideoPlayer({
     const ss = String(seconds).padStart(2, "0")
     return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
   }
-
   const formatSpeed = (bytesPerSecond: number) => {
-      if (bytesPerSecond < 1024) return "0 Kb/s";
-      const kbs = bytesPerSecond / 1024;
-      if (kbs < 1024) return `${kbs.toFixed(1)} Kb/s`;
-      const mbs = kbs / 1024;
-      return `${mbs.toFixed(2)} Mb/s`;
-  };
+    if (bytesPerSecond === 0) return "0 Kb/s";
+    
+    const kbs = bytesPerSecond / 1024;
+    const mbs = kbs / 1024;
 
-  const formatBytes = (bytes: number) => {
-      if (bytes < 1024) return "0 KB";
-      const kb = bytes / 1024;
-      if (kb < 1024) return `${kb.toFixed(1)} KB`;
-      const mb = kb / 1024;
-      return `${mb.toFixed(1)} MB`;
+    if (mbs >= 1) {
+        return `${mbs.toFixed(2)} Mbps`;
+    } else {
+        return `${kbs.toFixed(2)} Kb/s`;
+    }
   };
-  
   const retry = () => {
     if (videoRef.current) videoRef.current.load()
   }
@@ -583,7 +557,7 @@ export default function VideoPlayer({
           className="h-full w-full object-contain"
           onLoadStart={handleLoadStart}
           onCanPlay={handleCanPlay}
-          onPlaying={() => { setIsPlaying(true); setIsBuffering(false); }}
+          onPlaying={() => setIsBuffering(false)}
           onWaiting={() => setIsBuffering(true)}
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
@@ -608,8 +582,8 @@ export default function VideoPlayer({
                 className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center"
             >
                 <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/50 border-t-white" />
-                <span className="mt-4 text-white text-sm font-semibold text-shadow tabular-nums">
-                    {`${formatSpeed(downloadSpeed)} / ${formatBytes(totalLoaded)}`}
+                <span className="mt-4 text-white text-sm font-semibold text-shadow">
+                    {formatSpeed(downloadSpeed)}
                 </span>
             </div>
         )}
@@ -636,7 +610,7 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {!isLoading && !error && !isPlaying && !showContinueWatching && (
+        {!isLoading && !error && !isPlaying && (
           <button
             style={{ transform: 'translateZ(0)' }}
             aria-label="Play"
