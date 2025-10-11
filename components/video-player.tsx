@@ -70,7 +70,6 @@ export default function VideoPlayer({
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
-  const [endingTriggered, setEndingTriggered] = useState(false);
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
@@ -86,7 +85,6 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    setEndingTriggered(false);
     setShowNextEpisodeOverlay(false);
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
@@ -181,16 +179,6 @@ export default function VideoPlayer({
     };
   }, [resetControlsTimeout, hideControls]);
 
-  const triggerNextEpisodeOverlay = useCallback(() => {
-    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode || !nextEpisodeInfo) {
-        return;
-    }
-    setEndingTriggered(true);
-    setShowNextEpisodeOverlay(true);
-    setCountdown(5);
-  }, [endingTriggered, isAutoplayEnabled, hasNextEpisode, onNextEpisode, nextEpisodeInfo]);
-
-
   const handleLoadStart = () => {
     setIsLoading(true)
     setError(null)
@@ -217,8 +205,9 @@ export default function VideoPlayer({
     const { currentTime, duration } = videoRef.current;
     setCurrentTime(currentTime);
 
-    if (duration > 0 && duration - currentTime < 7 && !endingTriggered) {
-      triggerNextEpisodeOverlay();
+    if (duration > 0 && duration - currentTime < 7 && !showNextEpisodeOverlay && isAutoplayEnabled && hasNextEpisode) {
+      setShowNextEpisodeOverlay(true);
+      setCountdown(5);
     }
   
     try {
@@ -240,8 +229,7 @@ export default function VideoPlayer({
 
   const handleEnded = () => {
     setIsPlaying(false);
-    if (isAutoplayEnabled && hasNextEpisode) {
-      setEndingTriggered(true);
+    if (!showNextEpisodeOverlay && isAutoplayEnabled && hasNextEpisode) {
       setShowNextEpisodeOverlay(true);
       setCountdown(5);
     }
@@ -249,6 +237,9 @@ export default function VideoPlayer({
 
   const handlePlayNext = useCallback(() => {
     setShowNextEpisodeOverlay(false);
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
     onNextEpisode?.();
   }, [onNextEpisode]);
 
@@ -304,23 +295,27 @@ export default function VideoPlayer({
   const seek = useCallback((amount: number) => {
     const v = videoRef.current
     if (!v) return
-    const newTime = Math.min(Math.max(0, v.currentTime + amount), duration || v.duration || 0);
+    const newTime = Math.min(Math.max(0, v.currentTime + amount), duration || v.duration || 0)
     v.currentTime = newTime;
     setShowSeekHint({ dir: amount > 0 ? "fwd" : "back", by: Math.abs(amount) })
     setTimeout(() => setShowSeekHint(null), 700)
     if (v.duration - newTime > 10) {
-      setEndingTriggered(false);
       setShowNextEpisodeOverlay(false);
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
     }
   }, [duration])
 
   const handleSeekSlider = (value: number[]) => {
     const v = videoRef.current
     if (!v) return
-    const newTime = value[0];
+    const newTime = value[0]
     if (v.duration - newTime > 10) {
-      setEndingTriggered(false);
       setShowNextEpisodeOverlay(false);
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
     }
     v.currentTime = newTime
     setCurrentTime(newTime)
