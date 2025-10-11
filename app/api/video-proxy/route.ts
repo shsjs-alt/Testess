@@ -1,6 +1,9 @@
 // PrimeVicio - Site/app/api/video-proxy/route.ts
 import { NextResponse, NextRequest } from "next/server";
 
+// Revertemos para o 'edge' runtime para redirecionamentos mais rápidos
+export const runtime = "edge";
+
 export async function GET(request: NextRequest) {
   const referer = request.headers.get("referer");
   const allowedReferer = process.env.ALLOWED_REFERER;
@@ -17,33 +20,25 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Busca o vídeo da URL de origem
-    const videoResponse = await fetch(videoUrl, {
-      headers: {
-        // Adiciona um referer genérico para maior compatibilidade
-        Referer: "https://www.google.com/",
-      },
-    });
+    // Tenta resolver a URL final fazendo uma requisição HEAD para seguir os redirecionamentos.
+    // Isso é útil para players em dispositivos móveis que podem ter problemas com cadeias de redirecionamento.
+    const videoResponse = await fetch(videoUrl, { method: 'HEAD', redirect: 'follow' });
 
-    if (!videoResponse.ok || !videoResponse.body) {
-      return new NextResponse("Falha ao buscar o conteúdo do vídeo.", { status: videoResponse.status });
-    }
+    // A URL final após todos os redirecionamentos.
+    const finalUrl = videoResponse.url;
 
-    // Cria os cabeçalhos da resposta, repassando os cabeçalhos importantes do vídeo original
-    const headers = new Headers({
-      "Content-Type": videoResponse.headers.get("Content-Type") || "video/mp4",
-      "Content-Length": videoResponse.headers.get("Content-Length") || "",
-      "Accept-Ranges": "bytes",
-    });
-
-    // Retorna o corpo do vídeo como um stream
-    return new NextResponse(videoResponse.body, {
-      status: 200,
-      headers,
-    });
+    // Redireciona o cliente para a URL final.
+    return NextResponse.redirect(new URL(finalUrl), 307);
     
   } catch (error) {
-    console.error("Erro no proxy de vídeo:", error);
-    return new NextResponse("Erro interno ao processar o vídeo.", { status: 500 });
+    console.warn("Proxy: Falha ao resolver a URL final com HEAD, tentando redirecionamento direto.", error);
+    // Se a requisição HEAD falhar (ex: não suportada pelo servidor de vídeo),
+    // recorremos ao comportamento original de redirecionamento direto, que funciona na maioria dos casos.
+    try {
+        return NextResponse.redirect(new URL(videoUrl), 307);
+    } catch (redirectError) {
+        console.error("Proxy: URL de redirecionamento de fallback inválida:", videoUrl, redirectError);
+        return new NextResponse("URL de vídeo inválida.", { status: 400 });
+    }
   }
 }
