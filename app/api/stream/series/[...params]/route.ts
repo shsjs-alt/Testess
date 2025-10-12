@@ -7,14 +7,12 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-// <<< MUDANÇA AQUI: Função agora verifica se o link termina com .mp4 ou .m3u8 >>>
+// <<< MUDANÇA AQUI: Função agora verifica se a URL contém .mp4 ou .m3u8 >>>
 function isDirectStreamLink(url: string): boolean {
     try {
-        const path = new URL(url).pathname;
-        const lowerPath = path.toLowerCase();
-        return lowerPath.endsWith('.mp4') || lowerPath.endsWith('.m3u8');
+        const lowerUrl = url.toLowerCase();
+        return lowerUrl.includes('.mp4') || lowerUrl.includes('.m3u8');
     } catch (error) {
-        // If URL parsing fails, it's not a direct link
         return false;
     }
 }
@@ -46,7 +44,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                         return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }], ...mediaInfo });
                     }
                     
-                    // Only use proxy if it's not a direct stream link
                     const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
                     return NextResponse.json({ streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }], ...mediaInfo });
                 }
