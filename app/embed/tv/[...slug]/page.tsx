@@ -2,10 +2,10 @@
 "use client";
 
 import { useParams, useRouter } from 'next/navigation';
-import { Clapperboard } from 'lucide-react';
+import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-import VideoPlayer from '../../../../components/video-player';
+import VideoPlayer from '@/components/video-player';
 
 type Stream = {
   url: string;
@@ -21,13 +21,6 @@ type SeasonInfo = {
     episode_count: number;
 }
 
-type NextEpisodeInfo = {
-  title: string;
-  coverUrl: string;
-  season: number;
-  episode: number;
-} | null;
-
 const API_KEY = "860b66ade580bacae581f4228fad49fc";
 const API_BASE_URL = "https://api.themoviedb.org/3";
 
@@ -42,7 +35,6 @@ export default function TvEmbedPage() {
   const [loading, setLoading] = useState(true);
   const [mediaTitle, setMediaTitle] = useState('Episódio');
   const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
-  const [nextEpisodeInfo, setNextEpisodeInfo] = useState<NextEpisodeInfo>(null);
 
   useEffect(() => {
     if (!tmdbId || !season || !episode) {
@@ -54,20 +46,17 @@ export default function TvEmbedPage() {
     const fetchAllData = async () => {
       setLoading(true);
       setError(null);
+      setSeasonInfo(null);
       setStream(null);
-      setNextEpisodeInfo(null);
-
       try {
-        const currentEpisodeNum = parseInt(episode, 10);
-        
+        // Fetch stream and season info in parallel
         const streamPromise = fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
         const seasonInfoPromise = fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}?api_key=${API_KEY}&language=pt-BR`);
 
         const [streamRes, seasonInfoRes] = await Promise.all([streamPromise, seasonInfoPromise]);
 
         if (!streamRes.ok) {
-          const errorData = await streamRes.json().catch(() => ({ error: "Não foi possível obter o link do episódio." }));
-          throw new Error(errorData.error);
+          throw new Error("Não foi possível obter o link do episódio.");
         }
         
         const data: StreamInfo = await streamRes.json();
@@ -83,27 +72,8 @@ export default function TvEmbedPage() {
         if (seasonInfoRes.ok) {
             const seasonData = await seasonInfoRes.json();
             setSeasonInfo(seasonData);
-
-            const hasNext = currentEpisodeNum < seasonData.episode_count;
-            if (hasNext) {
-                const nextEpisodeNum = currentEpisodeNum + 1;
-                try {
-                    const nextEpRes = await fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}/episode/${nextEpisodeNum}?api_key=${API_KEY}&language=pt-BR`);
-                    if (nextEpRes.ok) {
-                        const nextEpData = await nextEpRes.json();
-                        setNextEpisodeInfo({
-                            title: nextEpData.name || `Episódio ${nextEpisodeNum}`,
-                            coverUrl: `https://image.tmdb.org/t/p/w500/${nextEpData.still_path}`,
-                            season: parseInt(season, 10),
-                            episode: nextEpisodeNum
-                        });
-                    }
-                } catch (e) {
-                    console.warn("Não foi possível buscar dados do próximo episódio.");
-                }
-            }
         } else {
-            console.warn("Não foi possível buscar dados da temporada.");
+            console.warn("Não foi possível buscar dados da temporada para determinar o próximo episódio.");
         }
 
       } catch (err: any) {
@@ -116,7 +86,7 @@ export default function TvEmbedPage() {
     fetchAllData();
   }, [tmdbId, season, episode]);
 
-  const hasNextEpisode = !!nextEpisodeInfo;
+  const hasNextEpisode = seasonInfo ? parseInt(episode, 10) < seasonInfo.episode_count : false;
 
   const playNextEpisode = () => {
     if (hasNextEpisode) {
@@ -125,6 +95,14 @@ export default function TvEmbedPage() {
     }
   };
   
+  if (loading) {
+    return (
+      <main className="w-screen h-screen flex items-center justify-center bg-black">
+        <Loader2 className="w-12 h-12 animate-spin text-white" />
+      </main>
+    );
+  }
+
   if (error) {
     return (
       <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
@@ -135,31 +113,34 @@ export default function TvEmbedPage() {
     );
   }
 
-  if (stream && stream.playerType === 'gdrive') {
+  if (stream) {
+    if (stream.playerType === 'gdrive') {
+      return (
+        <main className="w-screen h-screen relative bg-black">
+          <iframe
+            src={stream.url}
+            className="w-full h-full border-0"
+            allow="autoplay; fullscreen"
+            allowFullScreen
+          ></iframe>
+        </main>
+      );
+    }
+    
     return (
       <main className="w-screen h-screen relative bg-black">
-        <iframe
+        <VideoPlayer
           src={stream.url}
-          className="w-full h-full border-0"
-          allow="autoplay; fullscreen"
-          allowFullScreen
-        ></iframe>
+          title={mediaTitle}
+          downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
+          rememberPosition={true}
+          rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
+          hasNextEpisode={hasNextEpisode}
+          onNextEpisode={playNextEpisode}
+        />
       </main>
     );
   }
-    
-  return (
-    <main className="w-screen h-screen relative bg-black">
-      <VideoPlayer
-        src={!loading ? stream?.url : null}
-        title={mediaTitle}
-        downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
-        rememberPosition={true}
-        rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
-        hasNextEpisode={hasNextEpisode}
-        onNextEpisode={playNextEpisode}
-        nextEpisodeInfo={nextEpisodeInfo || undefined}
-      />
-    </main>
-  );
+
+  return null;
 }

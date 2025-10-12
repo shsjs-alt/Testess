@@ -2,7 +2,7 @@
 "use client";
 
 import { useParams } from 'next/navigation';
-import { Clapperboard } from 'lucide-react';
+import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import VideoPlayer from '@/components/video-player';
@@ -36,8 +36,7 @@ export default function MovieEmbedPage() {
       try {
         const res = await fetch(`/api/stream/movies/${tmdbId}`);
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: "Não foi possível obter o link de streaming." }));
-          throw new Error(errorData.error);
+          throw new Error("Não foi possível obter o link de streaming.");
         }
         
         const data: StreamInfo = await res.json();
@@ -59,6 +58,14 @@ export default function MovieEmbedPage() {
     fetchMovieData();
   }, [tmdbId]);
 
+  if (loading) {
+    return (
+      <main className="w-screen h-screen flex items-center justify-center bg-black">
+        <Loader2 className="w-12 h-12 animate-spin text-white" />
+      </main>
+    );
+  }
+
   if (error) {
     return (
       <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
@@ -68,9 +75,9 @@ export default function MovieEmbedPage() {
       </main>
     );
   }
-  
-  // Lida com o caso de gdrive
-  if (stream && stream.playerType === 'gdrive') {
+
+  if (stream) {
+    if (stream.playerType === 'gdrive') {
       return (
         <main className="w-screen h-screen relative bg-black">
           <iframe
@@ -83,17 +90,20 @@ export default function MovieEmbedPage() {
           <div className="absolute top-0 right-0 w-16 h-14 bg-black z-10"></div>
         </main>
       );
-  }
-
-  return (
+    }
+    
+    return (
       <main className="w-screen h-screen relative bg-black">
         <VideoPlayer
-          src={!loading ? stream?.url : null}
+          src={stream.url}
           title={mediaTitle}
           downloadUrl={`/download/movies/${tmdbId}`}
           rememberPosition={true}
           rememberPositionKey={`movie-${tmdbId}`}
         />
       </main>
-  );
+    );
+  }
+
+  return null;
 }

@@ -7,23 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
 type VideoPlayerProps = {
-  src?: string | null
+  src: string
   title: string
   downloadUrl?: string
   onClose?: () => void
   rememberPositionKey?: string
   rememberPosition?: boolean
-  hasNextEpisode?: boolean;
-  onNextEpisode?: () => void;
-  nextEpisodeInfo?: {
-      title: string;
-      coverUrl: string;
-      season: number;
-      episode: number;
-  };
+  hasNextEpisode?: boolean
+  onNextEpisode?: () => void
 }
 
 export default function VideoPlayer({
@@ -33,6 +29,8 @@ export default function VideoPlayer({
   onClose,
   rememberPositionKey,
   rememberPosition = true,
+  hasNextEpisode,
+  onNextEpisode,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -61,10 +59,18 @@ export default function VideoPlayer({
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
+  
+  // Estados para a reprodução automática
+  const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
+  const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
+  const [countdown, setCountdown] = useState(5)
+  const [endingTriggered, setEndingTriggered] = useState(false);
 
   const volumeKey = "video-player-volume"
+  const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || src}`
   
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const originalRateRef = useRef<number>(1)
@@ -74,9 +80,14 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (src && videoElement) {
-        videoElement.src = src;
+    // Reseta o estado para o novo episódio/filme
+    setEndingTriggered(false);
+    setShowNextEpisodeOverlay(false);
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
     }
+    
+    // Função de limpeza para pausar e limpar a fonte, prevenindo vazamentos de memória
     return () => {
       if (videoElement) {
         videoElement.pause();
@@ -95,6 +106,11 @@ export default function VideoPlayer({
         if (videoRef.current) videoRef.current.volume = v
       }
       
+      const savedAutoplay = localStorage.getItem(autoplayKey);
+      if (savedAutoplay !== null) {
+        setIsAutoplayEnabled(JSON.parse(savedAutoplay));
+      }
+
       if (rememberPosition) {
         const savedPos = localStorage.getItem(positionKey)
         if (savedPos && videoRef.current) {
@@ -115,8 +131,8 @@ export default function VideoPlayer({
     if (!rememberPosition) return
     const id = setInterval(() => {
       try {
-        if (videoRef.current && videoRef.current.currentTime > 0) {
-          localStorage.setItem(positionKey, String(videoRef.current.currentTime))
+        if (videoRef.current) {
+          localStorage.setItem(positionKey, String(videoRef.current.currentTime || 0))
         }
       } catch (e) {
         // no-op
@@ -161,6 +177,16 @@ export default function VideoPlayer({
     };
   }, [resetControlsTimeout, hideControls]);
 
+  const triggerNextEpisodeOverlay = useCallback(() => {
+    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) {
+        return;
+    }
+    setEndingTriggered(true);
+    setShowNextEpisodeOverlay(true);
+    setCountdown(5);
+  }, [endingTriggered, isAutoplayEnabled, hasNextEpisode, onNextEpisode]);
+
+
   const handleLoadStart = () => {
     setIsLoading(true)
     setError(null)
@@ -184,8 +210,13 @@ export default function VideoPlayer({
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-    setCurrentTime(videoRef.current.currentTime);
-    
+    const { currentTime, duration } = videoRef.current;
+    setCurrentTime(currentTime);
+
+    if (duration > 0 && duration - currentTime < 10 && !endingTriggered) {
+      triggerNextEpisodeOverlay();
+    }
+  
     try {
       const buf = videoRef.current.buffered;
       if (buf && buf.length > 0) {
@@ -204,8 +235,43 @@ export default function VideoPlayer({
   }
 
   const handleEnded = () => {
-    setIsPlaying(false);
+    triggerNextEpisodeOverlay();
+    setIsPlaying(false)
   };
+
+  const handlePlayNext = useCallback(() => {
+    setShowNextEpisodeOverlay(false);
+    onNextEpisode?.();
+  }, [onNextEpisode]);
+
+  const handleCancelAutoplay = () => {
+    setShowNextEpisodeOverlay(false);
+    setShowControls(true)
+    if (videoRef.current) {
+      videoRef.current.currentTime = videoRef.current.duration;
+    }
+  };
+  
+  useEffect(() => {
+    if (showNextEpisodeOverlay) {
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownIntervalRef.current!);
+            handlePlayNext();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+  
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, [showNextEpisodeOverlay, handlePlayNext]);
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current
@@ -227,8 +293,7 @@ export default function VideoPlayer({
   const seek = useCallback((amount: number) => {
     const v = videoRef.current
     if (!v) return
-    const newTime = Math.min(Math.max(0, v.currentTime + amount), duration || v.duration || 0)
-    v.currentTime = newTime;
+    v.currentTime = Math.min(Math.max(0, v.currentTime + amount), duration || v.duration || 0)
     setShowSeekHint({ dir: amount > 0 ? "fwd" : "back", by: Math.abs(amount) })
     setTimeout(() => setShowSeekHint(null), 700)
   }, [duration])
@@ -236,9 +301,8 @@ export default function VideoPlayer({
   const handleSeekSlider = (value: number[]) => {
     const v = videoRef.current
     if (!v) return
-    const newTime = value[0]
-    v.currentTime = newTime
-    setCurrentTime(newTime)
+    v.currentTime = value[0]
+    setCurrentTime(value[0])
   }
 
   const toggleMute = useCallback(() => {
@@ -269,11 +333,13 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
   
+    // Fullscreen específico para iOS
     if (video.webkitEnterFullscreen) {
         video.webkitEnterFullscreen();
         return;
     }
 
+    // API de Fullscreen padrão
     const container = containerRef.current;
     if (!container) return;
 
@@ -308,6 +374,16 @@ export default function VideoPlayer({
     videoRef.current.playbackRate = rate
     setPlaybackRate(rate)
   }
+
+  const toggleAutoplay = () => {
+    setIsAutoplayEnabled(prev => {
+      const newState = !prev;
+      try {
+        localStorage.setItem(autoplayKey, JSON.stringify(newState));
+      } catch (e) { /* no-op */ }
+      return newState;
+    });
+  };
 
   const togglePip = useCallback(async () => {
     const v = videoRef.current
@@ -347,10 +423,7 @@ export default function VideoPlayer({
   }
 
   const retry = () => {
-    if (videoRef.current && src) {
-        videoRef.current.src = src;
-        videoRef.current.load();
-    }
+    if (videoRef.current) videoRef.current.load()
   }
 
   useEffect(() => {
@@ -502,12 +575,13 @@ export default function VideoPlayer({
         ref={containerRef}
         className={cn(
           "relative w-full aspect-video bg-black rounded-xl overflow-hidden group select-none",
-          isPlaying && !showControls && "cursor-none"
+          isPlaying && !showControls && !showNextEpisodeOverlay && "cursor-none"
         )}
         onDoubleClick={e => e.preventDefault()}
       >
         <video
           ref={videoRef}
+          src={src}
           className="h-full w-full object-contain"
           onLoadStart={handleLoadStart}
           onCanPlay={handleCanPlay}
@@ -529,13 +603,13 @@ export default function VideoPlayer({
           onClick={handleMainClick}
         />
 
-        {(isLoading || isBuffering || !src) && (
-            <div 
-                style={{ transform: 'translateZ(0)' }} 
-                className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center"
-            >
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/50 border-t-white" />
-            </div>
+        {(isLoading || isBuffering) && (
+          <div 
+            style={{ transform: 'translateZ(0)' }} 
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/50"
+          >
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-red-600/50 border-t-red-600" />
+          </div>
         )}
 
         {error && (
@@ -560,7 +634,7 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {!isLoading && !error && !isPlaying && src && (
+        {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
           <button
             style={{ transform: 'translateZ(0)' }}
             aria-label="Play"
@@ -615,6 +689,26 @@ export default function VideoPlayer({
             </motion.div>
           )}
         </AnimatePresence>
+        
+        <AnimatePresence>
+          {showNextEpisodeOverlay && (
+            <motion.div
+              style={{ transform: 'translateZ(0)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90"
+            >
+              <p className="text-white text-lg mb-6 font-semibold">
+                Próximo episódio em {countdown}
+              </p>
+              <div className="flex gap-4">
+                <Button onClick={handlePlayNext} className="bg-white text-black hover:bg-zinc-200">Assistir</Button>
+                <Button onClick={handleCancelAutoplay} variant="secondary">Cancelar</Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="absolute inset-0 z-0 flex md:hidden">
             <div
@@ -646,7 +740,7 @@ export default function VideoPlayer({
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-4 md:bottom-6 z-10 px-2 md:px-3 transition-opacity duration-300",
             "bg-gradient-to-t from-black/50 to-transparent pt-10",
-            showControls ? "opacity-100" : "opacity-0",
+            showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
           )}
         >
           <div
@@ -690,7 +784,7 @@ export default function VideoPlayer({
             <div className="flex items-center gap-1 md:gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15" disabled={!src}>
+                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
                     {isPlaying ? <Pause className="h-5 w-5 md:h-6 md:w-6" /> : <Play className="h-5 w-5 md:h-6 md:w-6" />}
                   </Button>
                 </TooltipTrigger>
@@ -757,6 +851,21 @@ export default function VideoPlayer({
                   container={containerRef.current}
                   style={{ zIndex: 2147483647 }}
                 >
+                  {hasNextEpisode && (
+                    <>
+                      <div className="mb-2 px-1 text-xs font-semibold text-white/80">Controles</div>
+                      <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between h-8 w-full px-1">
+                            <Label htmlFor="autoplay-switch" className="text-sm font-normal">Próximo ep. automático</Label>
+                            <Switch
+                              id="autoplay-switch"
+                              checked={isAutoplayEnabled}
+                              onCheckedChange={toggleAutoplay}
+                            />
+                          </div>
+                      </div>
+                    </>
+                  )}
                   <div className="my-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
                   <div className="flex flex-col gap-1">
                     {playbackRates.map((r) => (
