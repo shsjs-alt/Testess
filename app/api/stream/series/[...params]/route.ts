@@ -27,11 +27,13 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                 if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
                     const firestoreUrl = episodeData.urls[0].url as string;
 
-                    // Se for um link .mp4, usa o player customizado através do proxy
+                    // CORRIGIDO: Se for um link .mp4, envia a URL diretamente para o player, sem proxy.
                     if (isDirectMp4Link(firestoreUrl)) {
-                        console.log(`[Série] URL .mp4 direta detectada, usando proxy para: ${firestoreUrl}`);
-                        const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
-                        return NextResponse.json({ streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }], ...mediaInfo });
+                        console.log(`[Série] Link .mp4 direto do Firestore, enviando diretamente: ${firestoreUrl}`);
+                        return NextResponse.json({
+                            streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
+                            ...mediaInfo
+                        });
                     }
 
                     // Para QUALQUER OUTRO tipo de link, assume que é um player embedável e usa iframe

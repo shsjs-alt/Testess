@@ -23,12 +23,11 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url as string;
 
-            // Se for um link .mp4, usa o player customizado através do proxy para evitar CORS
+            // CORRIGIDO: Se for um link .mp4, envia a URL diretamente para o player, sem proxy.
             if (isDirectMp4Link(firestoreUrl)) {
-                console.log(`[Filme] Link .mp4 direto do Firestore: ${firestoreUrl}`);
-                const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
+                console.log(`[Filme] Link .mp4 direto do Firestore, enviando diretamente: ${firestoreUrl}`);
                 return NextResponse.json({
-                    streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }],
+                    streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
                     ...mediaInfo
                 });
             }
@@ -95,7 +94,6 @@ export async function GET(
           const finalUrl = roxanoResponse.url;
           console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
           const stream = {
-              // A API Roxano retorna um link que funciona no player customizado
               playerType: "custom", 
               url: finalUrl,
               name: "Servidor Principal",
