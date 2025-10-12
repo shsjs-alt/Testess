@@ -14,7 +14,6 @@ function getGoogleDriveId(url: string): string | null {
     return match ? match[1] : null;
 }
 
-
 // Helper para obter o stream do Firestore. Retorna um objeto de resposta ou null.
 async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     if (docSnap.exists()) {
@@ -84,45 +83,49 @@ export async function GET(
 
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
-    const docData = docSnap.exists() ? docSnap.data() : null;
     
-    if (docData?.forceFirestore === true) {
+    // 1. Lógica para quando o `forceFirestore` está ativado
+    if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         console.log(`[Filme ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
-        if (firestoreResponse) return firestoreResponse;
+        if (firestoreResponse) {
+            return firestoreResponse;
+        }
+        // Se forçado, mas não encontrado, retorna erro.
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
-    if (firestoreResponse) {
-        console.log(`[Filme ${tmdbId}] Sucesso com o Firestore como fonte principal.`);
-        return firestoreResponse;
-    }
-
-    console.log(`[Filme ${tmdbId}] Nenhum stream no Firestore. Tentando fallback para a API Principal (Roxano)...`);
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+    // 2. Lógica Padrão: Tenta a API Principal primeiro
     try {
-        const roxanoResponse = await Promise.race([
-            fetch(roxanoUrl, { redirect: 'follow' }), // Segue os redirecionamentos
-            timeout(5000)
-        ]) as Response;
+      const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+      const roxanoResponse = await Promise.race([
+          fetch(roxanoUrl, { redirect: 'follow' }), // Segue os redirecionamentos
+          timeout(5000)
+      ]) as Response;
 
-        if (roxanoResponse.ok) {
-            const finalUrl = roxanoResponse.url; // Pega a URL final após os redirecionamentos
-            console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
-            const stream = {
-                playerType: "custom",
-                // Envia a URL final para o proxy
-                url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalUrl)}`,
-                name: "Servidor Principal",
-            };
-            return NextResponse.json({ streams: [stream], ...mediaInfo });
-        }
-        throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
+      if (roxanoResponse.ok) {
+          const finalUrl = roxanoResponse.url; // Pega a URL final após os redirecionamentos
+          console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
+          const stream = {
+              playerType: "custom",
+              url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalUrl)}`,
+              name: "Servidor Principal",
+          };
+          return NextResponse.json({ streams: [stream], ...mediaInfo });
+      }
+      throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
     } catch (error) {
-        console.log(`[Filme ${tmdbId}] API Principal (Roxano) também falhou.`, error);
+        console.log(`[Filme ${tmdbId}] API Principal (Roxano) falhou, tentando fallback para o Firestore...`, error);
+
+        // 3. Fallback para o Firestore
+        const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
+        if (firestoreResponse) {
+            console.log(`[Filme ${tmdbId}] Sucesso com o fallback para Firestore.`);
+            return firestoreResponse;
+        }
     }
     
+    // 4. Se tudo falhar
     console.log(`[Filme ${tmdbId}] Nenhuma fonte de stream disponível.`);
     return NextResponse.json({ error: "Nenhum stream disponível para este filme." }, { status: 404 });
 
