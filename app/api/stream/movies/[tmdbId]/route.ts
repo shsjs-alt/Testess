@@ -10,25 +10,8 @@ const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 function isDirectMp4Link(url: string): boolean {
     try {
         const path = new URL(url).pathname;
-        return path.toLowerCase().endsWith('.mp4');
-    } catch (error) {
-        return false;
-    }
-}
-
-function getGoogleDriveId(url: string): string | null {
-    const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-}
-
-// NOVO: Identifica players que precisam de iframe
-function isIframePlayer(url: string): boolean {
-    // Adicione outros domínios se necessário
-    const iframeDomains = ['short.icu', 'movix.sbs'];
-    try {
-        const hostname = new URL(url).hostname;
-        return iframeDomains.some(domain => hostname.includes(domain));
+        // Verifica se termina com .mp4, opcionalmente com parâmetros de URL depois
+        return path.toLowerCase().split('?')[0].endsWith('.mp4');
     } catch (error) {
         return false;
     }
@@ -39,35 +22,21 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         const docData = docSnap.data();
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url as string;
-            
-            const googleDriveId = getGoogleDriveId(firestoreUrl);
-            if (googleDriveId) {
-                return NextResponse.json({
-                    streams: [{ playerType: "gdrive", url: `https://drive.google.com/file/d/${googleDriveId}/preview`, name: "Servidor Google Drive" }],
-                    ...mediaInfo
-                });
-            }
 
+            // Se for um link .mp4, usa o player customizado através do proxy para evitar CORS
             if (isDirectMp4Link(firestoreUrl)) {
-                console.log(`[Filme] Link .mp4 direto detectado, bypassando proxy para: ${firestoreUrl}`);
+                console.log(`[Filme] Link .mp4 direto do Firestore: ${firestoreUrl}`);
+                const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
                 return NextResponse.json({
-                    streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
+                    streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }],
                     ...mediaInfo
                 });
             }
 
-            // NOVO: Lógica para o player de iframe
-            if (isIframePlayer(firestoreUrl)) {
-                console.log(`[Filme] Link de iframe player detectado: ${firestoreUrl}`);
-                return NextResponse.json({
-                    streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }],
-                    ...mediaInfo
-                });
-            }
-            
-            const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
+            // Para QUALQUER OUTRO tipo de link, assume que é um player embedável e usa iframe
+            console.log(`[Filme] Link de player embed (iframe) do Firestore: ${firestoreUrl}`);
             return NextResponse.json({
-                streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }],
+                streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }],
                 ...mediaInfo
             });
         }
@@ -126,7 +95,8 @@ export async function GET(
           const finalUrl = roxanoResponse.url;
           console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
           const stream = {
-              playerType: "custom",
+              // A API Roxano retorna um link que funciona no player customizado
+              playerType: "custom", 
               url: finalUrl,
               name: "Servidor Principal",
           };
