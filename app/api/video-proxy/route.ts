@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-export const runtime = 'edge'; // O Edge Runtime é excelente para streaming
+export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     // Busca o vídeo no servidor de origem
     const videoResponse = await fetch(videoUrl, {
       headers: {
-        // Passa o cabeçalho 'Range' do pedido original, essencial para o seeking (avançar/retroceder)
+        // <<< MUDANÇA AQUI: Adicionados Headers para simular um navegador >>>
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer': videoUrl, // Usar a própria URL como referenciador
         'Range': request.headers.get('range') || 'bytes=0-',
       },
     });
@@ -35,11 +37,11 @@ export async function GET(request: NextRequest) {
     responseHeaders.set('Content-Type', videoResponse.headers.get('Content-Type') || 'video/mp4');
     responseHeaders.set('Content-Length', videoResponse.headers.get('Content-Length') || '');
     responseHeaders.set('Content-Range', videoResponse.headers.get('Content-Range') || '');
-    responseHeaders.set('Accept-Ranges', 'bytes'); // Crucial para permitir o seeking no player
-    responseHeaders.set('Cache-Control', 'public, max-age=3600, s-maxage=3600'); // Adiciona cache
+    responseHeaders.set('Accept-Ranges', 'bytes');
+    responseHeaders.set('Cache-Control', 'public, max-age=604800, immutable'); // Cache mais agressivo
 
     return new Response(stream, {
-      status: videoResponse.status, // Geralmente 206 (Partial Content) para streaming
+      status: videoResponse.status,
       headers: responseHeaders,
     });
 
