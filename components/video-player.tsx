@@ -99,14 +99,6 @@ export default function VideoPlayer({
         hls = new Hls();
         hls.loadSource(src);
         hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          if (isPlaying && !isIphone) {
-             video.play().catch(() => {
-                console.warn("Autoplay foi impedido pelo navegador.");
-                setIsPlaying(false);
-             });
-          }
-        });
         hls.on(Hls.Events.ERROR, function (event, data) {
           if (data.fatal) {
             console.error('HLS.js fatal error:', data);
@@ -132,7 +124,7 @@ export default function VideoPlayer({
         video.load();
       }
     };
-  }, [src, isIphone, isPlaying]);
+  }, [src]);
 
   useEffect(() => {
     try {
