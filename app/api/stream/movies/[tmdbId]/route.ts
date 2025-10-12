@@ -7,15 +7,11 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-function shouldBypassProxy(url: string): boolean {
-    const domainsToBypass = [
-        "cdn.iageni.com",
-        "vods1.watchingvs.com",
-        "sinalprivado.info"
-    ];
+// <<< MUDANÇA AQUI: Função agora verifica se o link termina com .mp4 >>>
+function isDirectMp4Link(url: string): boolean {
     try {
-        const hostname = new URL(url).hostname;
-        return domainsToBypass.some(domain => hostname.endsWith(domain));
+        const path = new URL(url).pathname;
+        return path.toLowerCase().endsWith('.mp4');
     } catch (error) {
         return false;
     }
@@ -41,8 +37,9 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
                 });
             }
 
-            if (shouldBypassProxy(firestoreUrl)) {
-                console.log(`[Filme] URL direta detectada, bypassando proxy para: ${firestoreUrl}`);
+            // <<< MUDANÇA AQUI: Usa a nova função de verificação >>>
+            if (isDirectMp4Link(firestoreUrl)) {
+                console.log(`[Filme] Link .mp4 direto detectado, bypassando proxy para: ${firestoreUrl}`);
                 return NextResponse.json({
                     streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
                     ...mediaInfo
@@ -109,7 +106,6 @@ export async function GET(
       if (roxanoResponse.ok) {
           const finalUrl = roxanoResponse.url;
           console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
-          // <<< MUDANÇA AQUI: Retornando a URL final diretamente, sem proxy >>>
           const stream = {
               playerType: "custom",
               url: finalUrl,

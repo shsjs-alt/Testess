@@ -7,15 +7,11 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-function shouldBypassProxy(url: string): boolean {
-    const domainsToBypass = [
-        "cdn.iageni.com",
-        "vods1.watchingvs.com",
-        "sinalprivado.info"
-    ];
+// <<< MUDANÇA AQUI: Função agora verifica se o link termina com .mp4 >>>
+function isDirectMp4Link(url: string): boolean {
     try {
-        const hostname = new URL(url).hostname;
-        return domainsToBypass.some(domain => hostname.endsWith(domain));
+        const path = new URL(url).pathname;
+        return path.toLowerCase().endsWith('.mp4');
     } catch (error) {
         return false;
     }
@@ -42,8 +38,9 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                         return NextResponse.json({ streams: [{ playerType: "gdrive", url: `https://drive.google.com/file/d/${googleDriveId}/preview`, name: "Servidor Google Drive" }], ...mediaInfo });
                     }
 
-                    if (shouldBypassProxy(firestoreUrl)) {
-                        console.log(`[Série] URL direta detectada, bypassando proxy para: ${firestoreUrl}`);
+                    // <<< MUDANÇA AQUI: Usa a nova função de verificação >>>
+                    if (isDirectMp4Link(firestoreUrl)) {
+                        console.log(`[Série] URL .mp4 direta detectada, bypassando proxy para: ${firestoreUrl}`);
                         return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }], ...mediaInfo });
                     }
                     
@@ -107,7 +104,6 @@ export async function GET(
       if (roxanoResponse.ok) {
           const finalUrl = roxanoResponse.url;
           console.log(`[Série ${tmdbId}] Sucesso com a API Principal (Roxano) para S${season}E${episode}. URL Final: ${finalUrl}`);
-          // <<< MUDANÇA AQUI: Retornando a URL final diretamente, sem proxy >>>
           const stream = {
               playerType: "custom",
               url: finalUrl,
