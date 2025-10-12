@@ -33,6 +33,10 @@ export default function VideoPlayer({
   onNextEpisode,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
+  // <<< NOVO CÓDIGO: Referência para o vídeo que vai gerar as miniaturas
+  const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
+  // <<< NOVO CÓDIGO: Referência para o canvas que vai desenhar a miniatura
+  const thumbnailCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
@@ -54,13 +58,14 @@ export default function VideoPlayer({
   const [playbackRate, setPlaybackRate] = useState(1)
   const [pipSupported, setPipSupported] = useState(false)
   const [isPipActive, setIsPipActive] = useState(false)
-
+  
+  // <<< NOVO CÓDIGO: Estado para a URL da imagem da miniatura
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
   const [hoverTime, setHoverTime] = useState<number | null>(null)
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
   
-  // Estados para a reprodução automática
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
@@ -78,16 +83,42 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // <<< NOVO CÓDIGO: Efeito para gerar a miniatura quando o hoverTime mudar
+  useEffect(() => {
+    const video = thumbnailVideoRef.current;
+    const canvas = thumbnailCanvasRef.current;
+    if (!video || !canvas || hoverTime === null) {
+      return;
+    }
+
+    const generateThumbnail = () => {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        setThumbnailUrl(canvas.toDataURL());
+      }
+    };
+    
+    // Define o tempo do vídeo de thumbnail e aguarda ele buscar o frame
+    video.currentTime = hoverTime;
+    
+    const onSeeked = () => {
+      generateThumbnail();
+      video.removeEventListener('seeked', onSeeked);
+    };
+    video.addEventListener('seeked', onSeeked);
+
+  }, [hoverTime]);
+
+
   useEffect(() => {
     const videoElement = videoRef.current;
-    // Reseta o estado para o novo episódio/filme
     setEndingTriggered(false);
     setShowNextEpisodeOverlay(false);
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
     
-    // Função de limpeza para pausar e limpar a fonte, prevenindo vazamentos de memória
     return () => {
       if (videoElement) {
         videoElement.pause();
@@ -333,13 +364,11 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
   
-    // Fullscreen específico para iOS
     if (video.webkitEnterFullscreen) {
         video.webkitEnterFullscreen();
         return;
     }
 
-    // API de Fullscreen padrão
     const container = containerRef.current;
     if (!container) return;
 
@@ -505,6 +534,7 @@ export default function VideoPlayer({
 
   const onProgressLeave = () => {
     setHoverTime(null);
+    setThumbnailUrl('');
   };
 
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
@@ -579,6 +609,10 @@ export default function VideoPlayer({
         )}
         onDoubleClick={e => e.preventDefault()}
       >
+        {/* <<< NOVO CÓDIGO: Elemento de vídeo e canvas escondidos para as miniaturas */}
+        <video ref={thumbnailVideoRef} src={src} className="hidden" preload="metadata" muted crossOrigin="anonymous" />
+        <canvas ref={thumbnailCanvasRef} className="hidden" width="160" height="90" />
+
         <video
           ref={videoRef}
           src={src}
@@ -596,6 +630,7 @@ export default function VideoPlayer({
           preload="metadata"
           autoPlay={!isIphone}
           playsInline
+          crossOrigin="anonymous"
         />
 
         <div
@@ -749,15 +784,26 @@ export default function VideoPlayer({
             onMouseLeave={onProgressLeave}
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
-             <div
-              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
-              style={{
-                left: hoverLeft,
-                visibility: hoverTime !== null ? 'visible' : 'hidden',
-              }}
-            >
-                {formatTime(hoverTime ?? 0)}
-            </div>
+            {/* <<< NOVO CÓDIGO: Container da miniatura >>> */}
+            <AnimatePresence>
+              {hoverTime !== null && thumbnailUrl && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute bottom-full mb-4 hidden -translate-x-1/2 flex-col items-center md:flex"
+                  style={{ left: hoverLeft }}
+                >
+                  <div className="overflow-hidden rounded-md border-2 border-white bg-black shadow-lg">
+                    <img src={thumbnailUrl} alt="Video thumbnail" className="h-[90px] w-[160px]" />
+                  </div>
+                  <span className="mt-2 rounded-sm bg-black/70 px-2 py-0.5 text-xs text-white">
+                    {formatTime(hoverTime ?? 0)}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
             
             <div className="relative flex items-center h-2.5 transition-[height] duration-200">
                 <div
