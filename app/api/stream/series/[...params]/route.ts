@@ -27,7 +27,10 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                     if (googleDriveId) {
                         return NextResponse.json({ streams: [{ playerType: "gdrive", url: `https://drive.google.com/file/d/${googleDriveId}/preview`, name: "Servidor Google Drive" }], ...mediaInfo });
                     }
-                    
+
+                    // <<< CORREÇÃO APLICADA AQUI >>>
+                    // Removida a verificação 'isDirectStreamLink'.
+                    // Agora, todos os links do Firestore que não são do Google Drive passarão pelo proxy.
                     console.log(`[Série] URL do Firestore encontrada. Usando proxy: ${firestoreUrl}`);
                     const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
                     return NextResponse.json({ streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }], ...mediaInfo });
@@ -64,16 +67,19 @@ export async function GET(
         };
       }
     } catch (tmdbError) {
-      console.warn("API de Séries: Não foi possível buscar informações do TMDB:", tmdbId, tmdbError);
+      console.warn("API de Séries: Não foi possível buscar informações do TMDB para a série:", tmdbId, tmdbError);
     }
     
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     
     if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
+        console.log(`[Série ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
-        if (firestoreResponse) return firestoreResponse;
-        return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
+        if (firestoreResponse) {
+            return firestoreResponse;
+        }
+        return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
     try {
@@ -85,16 +91,26 @@ export async function GET(
     
       if (roxanoResponse.ok) {
           const finalUrl = roxanoResponse.url;
-          const stream = { playerType: "custom", url: finalUrl, name: "Servidor Principal" };
+          console.log(`[Série ${tmdbId}] Sucesso com a API Principal (Roxano) para S${season}E${episode}. URL Final: ${finalUrl}`);
+          const stream = {
+              playerType: "custom",
+              url: finalUrl,
+              name: `Servidor Principal (T${season} E${episode})`,
+          };
           return NextResponse.json({ streams: [stream], ...mediaInfo });
       }
       throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
     } catch (error) {
-        console.log(`[Série ${tmdbId}] API Principal falhou, tentando fallback...`, error);
+        console.log(`[Série ${tmdbId}] API Principal (Roxano) falhou para S${season}E${episode}, tentando fallback para o Firestore...`, error);
+        
         const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
-        if (firestoreResponse) return firestoreResponse;
+        if (firestoreResponse) {
+            console.log(`[Série ${tmdbId}] Sucesso com o fallback para Firestore para S${season}E${episode}.`);
+            return firestoreResponse;
+        }
     }
 
+    console.log(`[Série ${tmdbId}] Nenhuma fonte de stream disponível para S${season}E${episode}.`);
     return NextResponse.json({ error: "Nenhum stream disponível para este episódio." }, { status: 404 });
 
   } catch (error) {
