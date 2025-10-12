@@ -7,6 +7,21 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
+// <<< MUDANÇA AQUI: Função para decidir se usa o link direto >>>
+function shouldBypassProxy(url: string): boolean {
+    const domainsToBypass = [
+        "cdn.iageni.com",
+        "vods1.watchingvs.com",
+        "sinalprivado.info"
+    ];
+    try {
+        const hostname = new URL(url).hostname;
+        return domainsToBypass.some(domain => hostname.endsWith(domain));
+    } catch (error) {
+        return false;
+    }
+}
+
 // Função para extrair o ID de um link do Google Drive
 function getGoogleDriveId(url: string): string | null {
     const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
@@ -14,7 +29,7 @@ function getGoogleDriveId(url: string): string | null {
     return match ? match[1] : null;
 }
 
-// Helper para obter o stream do Firestore. Retorna um objeto de resposta ou null.
+// Helper para obter o stream do Firestore.
 async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     if (docSnap.exists()) {
         const docData = docSnap.data();
@@ -22,28 +37,26 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
             const firestoreUrl = docData.urls[0].url as string;
             
             const googleDriveId = getGoogleDriveId(firestoreUrl);
-
             if (googleDriveId) {
-                const gdriveStream = {
-                    playerType: "gdrive",
-                    url: `https://drive.google.com/file/d/${googleDriveId}/preview`,
-                    name: "Servidor Google Drive",
-                };
                 return NextResponse.json({
-                    streams: [gdriveStream],
+                    streams: [{ playerType: "gdrive", url: `https://drive.google.com/file/d/${googleDriveId}/preview`, name: "Servidor Google Drive" }],
+                    ...mediaInfo
+                });
+            }
+
+            // <<< MUDANÇA AQUI: Lógica para usar link direto ou proxy >>>
+            if (shouldBypassProxy(firestoreUrl)) {
+                console.log(`[Filme] URL direta detectada, bypassando proxy para: ${firestoreUrl}`);
+                return NextResponse.json({
+                    streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
                     ...mediaInfo
                 });
             }
             
+            // Se não for um link direto conhecido, usa o proxy
             const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
-
-            const firestoreStream = {
-                playerType: "custom",
-                url: `/api/video-proxy?videoUrl=${safeUrl}`,
-                name: "Servidor Firebase",
-            };
             return NextResponse.json({
-                streams: [firestoreStream],
+                streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }],
                 ...mediaInfo
             });
         }
@@ -84,27 +97,24 @@ export async function GET(
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     
-    // 1. Lógica para quando o `forceFirestore` está ativado
     if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         console.log(`[Filme ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
         if (firestoreResponse) {
             return firestoreResponse;
         }
-        // Se forçado, mas não encontrado, retorna erro.
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // 2. Lógica Padrão: Tenta a API Principal primeiro
     try {
       const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
       const roxanoResponse = await Promise.race([
-          fetch(roxanoUrl, { redirect: 'follow' }), // Segue os redirecionamentos
+          fetch(roxanoUrl, { redirect: 'follow' }),
           timeout(5000)
       ]) as Response;
 
       if (roxanoResponse.ok) {
-          const finalUrl = roxanoResponse.url; // Pega a URL final após os redirecionamentos
+          const finalUrl = roxanoResponse.url;
           console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
           const stream = {
               playerType: "custom",
@@ -117,7 +127,6 @@ export async function GET(
     } catch (error) {
         console.log(`[Filme ${tmdbId}] API Principal (Roxano) falhou, tentando fallback para o Firestore...`, error);
 
-        // 3. Fallback para o Firestore
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
         if (firestoreResponse) {
             console.log(`[Filme ${tmdbId}] Sucesso com o fallback para Firestore.`);
@@ -125,7 +134,6 @@ export async function GET(
         }
     }
     
-    // 4. Se tudo falhar
     console.log(`[Filme ${tmdbId}] Nenhuma fonte de stream disponível.`);
     return NextResponse.json({ error: "Nenhum stream disponível para este filme." }, { status: 404 });
 

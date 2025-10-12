@@ -7,6 +7,21 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
+// <<< MUDANÇA AQUI: Função para decidir se usa o link direto >>>
+function shouldBypassProxy(url: string): boolean {
+    const domainsToBypass = [
+        "cdn.iageni.com",
+        "vods1.watchingvs.com",
+        "sinalprivado.info"
+    ];
+    try {
+        const hostname = new URL(url).hostname;
+        return domainsToBypass.some(domain => hostname.endsWith(domain));
+    } catch (error) {
+        return false;
+    }
+}
+
 // Função para extrair o ID de um link do Google Drive
 function getGoogleDriveId(url: string): string | null {
     const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
@@ -26,22 +41,17 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
 
                     const googleDriveId = getGoogleDriveId(firestoreUrl);
                     if (googleDriveId) {
-                        const gdriveStream = {
-                            playerType: "gdrive",
-                            url: `https://drive.google.com/file/d/${googleDriveId}/preview`,
-                            name: "Servidor Google Drive",
-                        };
-                        return NextResponse.json({ streams: [gdriveStream], ...mediaInfo });
+                        return NextResponse.json({ streams: [{ playerType: "gdrive", url: `https://drive.google.com/file/d/${googleDriveId}/preview`, name: "Servidor Google Drive" }], ...mediaInfo });
                     }
 
+                    // <<< MUDANÇA AQUI: Lógica para usar link direto ou proxy >>>
+                    if (shouldBypassProxy(firestoreUrl)) {
+                        console.log(`[Série] URL direta detectada, bypassando proxy para: ${firestoreUrl}`);
+                        return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }], ...mediaInfo });
+                    }
+                    
                     const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
-
-                    const firestoreStream = {
-                        playerType: "custom",
-                        url: `/api/video-proxy?videoUrl=${safeUrl}`,
-                        name: "Servidor Firebase",
-                    };
-                    return NextResponse.json({ streams: [firestoreStream], ...mediaInfo });
+                    return NextResponse.json({ streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }], ...mediaInfo });
                 }
             }
         }
@@ -81,7 +91,6 @@ export async function GET(
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     
-    // 1. Lógica para quando o `forceFirestore` está ativado
     if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         console.log(`[Série ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
@@ -91,7 +100,6 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
-    // 2. Lógica Padrão: Tenta a API Principal primeiro
     try {
       const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
       const roxanoResponse = await Promise.race([
@@ -113,7 +121,6 @@ export async function GET(
     } catch (error) {
         console.log(`[Série ${tmdbId}] API Principal (Roxano) falhou para S${season}E${episode}, tentando fallback para o Firestore...`, error);
         
-        // 3. Fallback para o Firestore
         const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
         if (firestoreResponse) {
             console.log(`[Série ${tmdbId}] Sucesso com o fallback para Firestore para S${season}E${episode}.`);
@@ -121,7 +128,6 @@ export async function GET(
         }
     }
 
-    // 4. Se tudo falhar
     console.log(`[Série ${tmdbId}] Nenhuma fonte de stream disponível para S${season}E${episode}.`);
     return NextResponse.json({ error: "Nenhum stream disponível para este episódio." }, { status: 404 });
 
