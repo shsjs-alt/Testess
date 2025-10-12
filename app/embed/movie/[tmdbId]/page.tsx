@@ -77,7 +77,8 @@ export default function MovieEmbedPage() {
   }
 
   if (stream) {
-    if (stream.playerType === 'gdrive') {
+    // NOVO: Lógica para renderizar iframe ou o player customizado
+    if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
       return (
         <main className="w-screen h-screen relative bg-black">
           <iframe
@@ -86,8 +87,9 @@ export default function MovieEmbedPage() {
             allow="autoplay; fullscreen"
             allowFullScreen
           ></iframe>
-          {/* Div para cobrir o botão "abrir em nova guia" do Google Drive */}
-          <div className="absolute top-0 right-0 w-16 h-14 bg-black z-10"></div>
+          {stream.playerType === 'gdrive' && (
+             <div className="absolute top-0 right-0 w-16 h-14 bg-black z-10"></div>
+          )}
         </main>
       );
     }

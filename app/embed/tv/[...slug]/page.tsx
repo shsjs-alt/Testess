@@ -49,7 +49,6 @@ export default function TvEmbedPage() {
       setSeasonInfo(null);
       setStream(null);
       try {
-        // Fetch stream and season info in parallel
         const streamPromise = fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
         const seasonInfoPromise = fetch(`${API_BASE_URL}/tv/${tmdbId}/season/${season}?api_key=${API_KEY}&language=pt-BR`);
 
@@ -114,7 +113,8 @@ export default function TvEmbedPage() {
   }
 
   if (stream) {
-    if (stream.playerType === 'gdrive') {
+    // NOVO: Lógica para renderizar iframe ou o player customizado
+    if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
       return (
         <main className="w-screen h-screen relative bg-black">
           <iframe

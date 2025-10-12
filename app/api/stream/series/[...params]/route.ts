@@ -7,7 +7,6 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-// <<< MUDANÇA AQUI: Função agora verifica se o link termina com .mp4 >>>
 function isDirectMp4Link(url: string): boolean {
     try {
         const path = new URL(url).pathname;
@@ -21,6 +20,17 @@ function getGoogleDriveId(url: string): string | null {
     const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
     const match = url.match(regex);
     return match ? match[1] : null;
+}
+
+// NOVO: Identifica players que precisam de iframe
+function isIframePlayer(url: string): boolean {
+    const iframeDomains = ['short.icu', 'movix.sbs'];
+    try {
+        const hostname = new URL(url).hostname;
+        return iframeDomains.some(domain => hostname.includes(domain));
+    } catch (error) {
+        return false;
+    }
 }
 
 async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
@@ -38,10 +48,18 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                         return NextResponse.json({ streams: [{ playerType: "gdrive", url: `https://drive.google.com/file/d/${googleDriveId}/preview`, name: "Servidor Google Drive" }], ...mediaInfo });
                     }
 
-                    // <<< MUDANÇA AQUI: Usa a nova função de verificação >>>
                     if (isDirectMp4Link(firestoreUrl)) {
                         console.log(`[Série] URL .mp4 direta detectada, bypassando proxy para: ${firestoreUrl}`);
                         return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }], ...mediaInfo });
+                    }
+
+                    // NOVO: Lógica para o player de iframe
+                    if (isIframePlayer(firestoreUrl)) {
+                        console.log(`[Série] Link de iframe player detectado: ${firestoreUrl}`);
+                        return NextResponse.json({
+                            streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }],
+                            ...mediaInfo
+                        });
                     }
                     
                     const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
