@@ -7,7 +7,6 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-// <<< MUDANÇA AQUI: Função para decidir se usa o link direto >>>
 function shouldBypassProxy(url: string): boolean {
     const domainsToBypass = [
         "cdn.iageni.com",
@@ -22,7 +21,6 @@ function shouldBypassProxy(url: string): boolean {
     }
 }
 
-// Função para extrair o ID de um link do Google Drive
 function getGoogleDriveId(url: string): string | null {
     const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
     const match = url.match(regex);
@@ -44,7 +42,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                         return NextResponse.json({ streams: [{ playerType: "gdrive", url: `https://drive.google.com/file/d/${googleDriveId}/preview`, name: "Servidor Google Drive" }], ...mediaInfo });
                     }
 
-                    // <<< MUDANÇA AQUI: Lógica para usar link direto ou proxy >>>
                     if (shouldBypassProxy(firestoreUrl)) {
                         console.log(`[Série] URL direta detectada, bypassando proxy para: ${firestoreUrl}`);
                         return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }], ...mediaInfo });
@@ -110,9 +107,10 @@ export async function GET(
       if (roxanoResponse.ok) {
           const finalUrl = roxanoResponse.url;
           console.log(`[Série ${tmdbId}] Sucesso com a API Principal (Roxano) para S${season}E${episode}. URL Final: ${finalUrl}`);
+          // <<< MUDANÇA AQUI: Retornando a URL final diretamente, sem proxy >>>
           const stream = {
               playerType: "custom",
-              url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalUrl)}`,
+              url: finalUrl,
               name: `Servidor Principal (T${season} E${episode})`,
           };
           return NextResponse.json({ streams: [stream], ...mediaInfo });

@@ -7,7 +7,6 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-// <<< MUDANÇA AQUI: Função para decidir se usa o link direto >>>
 function shouldBypassProxy(url: string): boolean {
     const domainsToBypass = [
         "cdn.iageni.com",
@@ -22,14 +21,12 @@ function shouldBypassProxy(url: string): boolean {
     }
 }
 
-// Função para extrair o ID de um link do Google Drive
 function getGoogleDriveId(url: string): string | null {
     const regex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
     const match = url.match(regex);
     return match ? match[1] : null;
 }
 
-// Helper para obter o stream do Firestore.
 async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     if (docSnap.exists()) {
         const docData = docSnap.data();
@@ -44,7 +41,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
                 });
             }
 
-            // <<< MUDANÇA AQUI: Lógica para usar link direto ou proxy >>>
             if (shouldBypassProxy(firestoreUrl)) {
                 console.log(`[Filme] URL direta detectada, bypassando proxy para: ${firestoreUrl}`);
                 return NextResponse.json({
@@ -53,7 +49,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
                 });
             }
             
-            // Se não for um link direto conhecido, usa o proxy
             const safeUrl = encodeURIComponent(decodeURIComponent(firestoreUrl));
             return NextResponse.json({
                 streams: [{ playerType: "custom", url: `/api/video-proxy?videoUrl=${safeUrl}`, name: "Servidor Firebase" }],
@@ -64,9 +59,7 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     return null;
 }
 
-// Helper para criar uma promessa que rejeita após um timeout
 const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
-
 
 export async function GET(
   request: Request,
@@ -116,9 +109,10 @@ export async function GET(
       if (roxanoResponse.ok) {
           const finalUrl = roxanoResponse.url;
           console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
+          // <<< MUDANÇA AQUI: Retornando a URL final diretamente, sem proxy >>>
           const stream = {
               playerType: "custom",
-              url: `/api/video-proxy?videoUrl=${encodeURIComponent(finalUrl)}`,
+              url: finalUrl,
               name: "Servidor Principal",
           };
           return NextResponse.json({ streams: [stream], ...mediaInfo });
