@@ -1,6 +1,8 @@
+// components/video-player.tsx
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import Hls from "hls.js"
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, Settings, PictureInPicture, X, Download } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
@@ -60,7 +62,6 @@ export default function VideoPlayer({
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
   
-  // Estados para a reprodução automática
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
@@ -79,23 +80,59 @@ export default function VideoPlayer({
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const videoElement = videoRef.current;
-    // Reseta o estado para o novo episódio/filme
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Reset states for new media
     setEndingTriggered(false);
     setShowNextEpisodeOverlay(false);
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
-    
-    // Função de limpeza para pausar e limpar a fonte, prevenindo vazamentos de memória
+    setError(null);
+    setIsLoading(true);
+
+    let hls: Hls | null = null;
+
+    if (src.includes('.m3u8')) {
+      if (Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (isPlaying && !isIphone) {
+             video.play().catch(() => {
+                console.warn("Autoplay foi impedido pelo navegador.");
+                setIsPlaying(false);
+             });
+          }
+        });
+        hls.on(Hls.Events.ERROR, function (event, data) {
+          if (data.fatal) {
+            console.error('HLS.js fatal error:', data);
+            setError("Erro ao carregar o vídeo. Tente novamente.");
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = src;
+      } else {
+        setError("Seu navegador não suporta a reprodução deste vídeo (HLS).");
+      }
+    } else {
+      video.src = src;
+    }
+
     return () => {
-      if (videoElement) {
-        videoElement.pause();
-        videoElement.removeAttribute('src');
-        videoElement.load();
+      if (hls) {
+        hls.destroy();
+      }
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
       }
     };
-  }, [src]);
+  }, [src, isIphone, isPlaying]);
 
   useEffect(() => {
     try {
@@ -116,6 +153,7 @@ export default function VideoPlayer({
         if (savedPos && videoRef.current) {
           const n = Number.parseFloat(savedPos)
           if (!Number.isNaN(n) && n > 5) {
+            // We set it here, but don't play yet, let onCanPlay handle it.
             videoRef.current.currentTime = n
             setCurrentTime(n)
             setShowContinueWatching(true)
@@ -205,7 +243,9 @@ export default function VideoPlayer({
   const handleError = () => {
     setIsLoading(false)
     setIsBuffering(false)
-    setError("Não foi possível carregar o vídeo.")
+    if (!error) {
+      setError("Não foi possível carregar o vídeo.")
+    }
   }
 
   const handleTimeUpdate = () => {
@@ -333,13 +373,11 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
   
-    // Fullscreen específico para iOS
     if (video.webkitEnterFullscreen) {
         video.webkitEnterFullscreen();
         return;
     }
 
-    // API de Fullscreen padrão
     const container = containerRef.current;
     if (!container) return;
 
@@ -423,7 +461,16 @@ export default function VideoPlayer({
   }
 
   const retry = () => {
-    if (videoRef.current) videoRef.current.load()
+    setError(null)
+    if (videoRef.current) {
+      const currentSrc = videoRef.current.currentSrc || src; // Use currentSrc if available
+      // Force reload by re-triggering the useEffect for src
+      // This is a bit of a hack, but it's effective for re-initializing hls.js
+      if (videoRef.current.src) videoRef.current.src = '';
+      setTimeout(() => {
+         if (videoRef.current) videoRef.current.src = currentSrc;
+      }, 0)
+    }
   }
 
   useEffect(() => {
@@ -581,7 +628,6 @@ export default function VideoPlayer({
       >
         <video
           ref={videoRef}
-          src={src}
           className="h-full w-full object-contain"
           onLoadStart={handleLoadStart}
           onCanPlay={handleCanPlay}
@@ -594,7 +640,6 @@ export default function VideoPlayer({
           onPause={() => setIsPlaying(false)}
           onEnded={handleEnded}
           preload="metadata"
-          autoPlay={!isIphone}
           playsInline
         />
 
