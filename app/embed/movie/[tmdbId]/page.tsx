@@ -77,7 +77,6 @@ export default function MovieEmbedPage() {
   }
 
   if (stream) {
-    // NOVO: Lógica para renderizar iframe ou o player customizado
     if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
       return (
         <main className="w-screen h-screen relative bg-black">
@@ -99,7 +98,8 @@ export default function MovieEmbedPage() {
         <VideoPlayer
           src={stream.url}
           title={mediaTitle}
-          downloadUrl={`/download/movies/${tmdbId}`}
+          // <<< CORREÇÃO AQUI >>>
+          downloadUrl={`/download/movie/${tmdbId}`}
           rememberPosition={true}
           rememberPositionKey={`movie-${tmdbId}`}
         />

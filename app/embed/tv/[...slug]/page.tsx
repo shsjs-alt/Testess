@@ -113,7 +113,6 @@ export default function TvEmbedPage() {
   }
 
   if (stream) {
-    // NOVO: Lógica para renderizar iframe ou o player customizado
     if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
       return (
         <main className="w-screen h-screen relative bg-black">
@@ -132,7 +131,8 @@ export default function TvEmbedPage() {
         <VideoPlayer
           src={stream.url}
           title={mediaTitle}
-          downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
+          // <<< CORREÇÃO AQUI >>>
+          downloadUrl={`/download/tv/${tmdbId}/${season}/${episode}`}
           rememberPosition={true}
           rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
           hasNextEpisode={hasNextEpisode}
