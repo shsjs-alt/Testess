@@ -85,7 +85,7 @@ export async function GET(
 
     // --- LÓGICA CORRIGIDA: Resolve o redirecionamento da Roxano API ---
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-    console.log(`[Série ${tmdbId}] Resolvendo URL da API Roxano para o cliente: ${roxanoUrl}`);
+    console.log(`[Série ${tmdbId}] Resolvendo URL da API Roxano: ${roxanoUrl}`);
 
     try {
         const roxanoResponse = await fetch(roxanoUrl, {
@@ -100,7 +100,7 @@ export async function GET(
         if (roxanoResponse.status >= 300 && roxanoResponse.status < 400) {
             const finalUrl = roxanoResponse.headers.get('location');
             if (finalUrl) {
-                console.log(`[Série ${tmdbId}] URL resolvida para: ${finalUrl}`);
+                console.log(`[Série ${tmdbId}] URL resolvida para (MP4): ${finalUrl}`);
                 const stream = {
                     playerType: "custom",
                     url: finalUrl,

@@ -85,18 +85,19 @@ export async function GET(
           method: 'GET',
           redirect: 'manual', // Impede que o fetch siga o redirect automaticamente
           headers: {
+              // Simula um navegador para evitar bloqueios simples
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
               "Referer": "https://primevicio.vercel.app/" 
           }
       });
 
-      // Se a resposta for um redirecionamento, pegamos a URL final
+      // Se a resposta for um redirecionamento (status 3xx), pegamos a URL final
       if (roxanoResponse.status >= 300 && roxanoResponse.status < 400) {
           const finalUrl = roxanoResponse.headers.get('location');
           if (finalUrl) {
-              console.log(`[Filme ${tmdbId}] URL resolvida para: ${finalUrl}`);
+              console.log(`[Filme ${tmdbId}] URL resolvida para (MP4): ${finalUrl}`);
               const stream = {
-                  playerType: "custom",
+                  playerType: "custom", // O player tratará como <video src="...">
                   url: finalUrl,
                   name: "Servidor Principal",
               };
