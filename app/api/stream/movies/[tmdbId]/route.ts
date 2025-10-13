@@ -76,37 +76,24 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // --- LÓGICA MANTIDA: Resolve o redirecionamento da Roxano API para filmes ---
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-    console.log(`[Filme ${tmdbId}] Resolvendo URL da API Roxano: ${roxanoUrl}`);
-    
+    // --- LÓGICA CORRIGIDA: Usa o proxy interno para filmes ---
     try {
-      const roxanoResponse = await fetch(roxanoUrl, {
-          method: 'GET',
-          redirect: 'manual', // Impede que o fetch siga o redirect automaticamente
-          headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-              "Referer": "https://primevicio.vercel.app/" 
-          }
-      });
+        const roxanoSourceUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+        
+        // Monta a URL do seu próprio proxy para encapsular a URL da Roxano
+        const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoSourceUrl)}`;
 
-      if (roxanoResponse.status >= 300 && roxanoResponse.status < 400) {
-          const finalUrl = roxanoResponse.headers.get('location');
-          if (finalUrl) {
-              console.log(`[Filme ${tmdbId}] URL resolvida para (MP4): ${finalUrl}`);
-              const stream = {
-                  playerType: "custom",
-                  url: finalUrl,
-                  name: "Servidor Principal",
-              };
-              return NextResponse.json({ streams: [stream], ...mediaInfo });
-          }
-      }
-      
-      throw new Error(`Roxano API não retornou um redirecionamento. Status: ${roxanoResponse.status}`);
+        console.log(`[Filme ${tmdbId}] Retornando URL via proxy: ${proxyUrl}`);
 
-    } catch (roxanoError) {
-        console.error(`[Filme ${tmdbId}] Falha ao resolver a URL da Roxano, tentando fallback para Firestore...`, roxanoError);
+        const stream = {
+            playerType: "custom",
+            url: proxyUrl, // O player receberá a URL do seu proxy
+            name: "Servidor Principal",
+        };
+        return NextResponse.json({ streams: [stream], ...mediaInfo });
+
+    } catch (error) {
+        console.error(`[Filme ${tmdbId}] Erro ao montar URL do proxy, tentando fallback...`, error);
         
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
         if (firestoreResponse) {
@@ -115,7 +102,7 @@ export async function GET(
 
         return NextResponse.json({ error: "Nenhum stream funcional encontrado." }, { status: 404 });
     }
-    // --- FIM DA LÓGICA MANTIDA ---
+    // --- FIM DA LÓGICA CORRIGIDA ---
 
   } catch (error) {
     console.error(`[Filme ${tmdbId}] Erro geral ao buscar streams:`, error);

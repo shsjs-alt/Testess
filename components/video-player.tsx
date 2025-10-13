@@ -80,19 +80,18 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // <<< INÍCIO DA CORREÇÃO: Lógica de Player aprimorada >>>
+  // <<< INÍCIO DA CORREÇÃO FINAL DO PLAYER >>>
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
 
-    // Limpa a instância HLS anterior
     if (hlsRef.current) {
         hlsRef.current.destroy();
     }
 
     const isHls = src.toLowerCase().includes('.m3u8');
     
-    // Usa HLS.js se a fonte for HLS e o navegador suportar
+    // Apenas usa HLS.js se a URL contiver .m3u8 e o navegador suportar.
     if (isHls && Hls.isSupported()) {
         console.log("HLS.js: Anexando player para stream HLS...");
         const hls = new Hls();
@@ -122,19 +121,17 @@ export default function VideoPlayer({
             }
         });
     } else {
-        // Usa o player nativo para MP4 ou para navegadores com suporte HLS nativo (Safari)
-        console.log("Usando player de vídeo nativo do navegador.");
+        // Para MP4, links de proxy (como /api/video-proxy), ou navegadores com suporte HLS nativo (Safari)
+        console.log("Player: Anexando fonte de vídeo direta (MP4, Proxy, ou HLS Nativo).");
         video.src = src;
     }
 
-    // Reseta o estado para o novo vídeo
     setEndingTriggered(false);
     setShowNextEpisodeOverlay(false);
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
     
-    // Limpeza ao desmontar
     return () => {
         if (hlsRef.current) {
             hlsRef.current.destroy();
@@ -146,7 +143,7 @@ export default function VideoPlayer({
         }
     };
 }, [src, isIphone, showContinueWatching]);
-// <<< FIM DA CORREÇÃO >>>
+// <<< FIM DA CORREÇÃO FINAL DO PLAYER >>>
 
 
   useEffect(() => {
