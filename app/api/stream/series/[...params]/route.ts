@@ -82,47 +82,24 @@ export async function GET(
         }
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
-
-    // --- LÓGICA CORRIGIDA: Resolve o redirecionamento da Roxano API ---
+    
+    // --- LÓGICA RESTAURADA PARA O ESTADO ORIGINAL QUE FUNCIONAVA ---
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-    console.log(`[Série ${tmdbId}] Resolvendo URL da API Roxano: ${roxanoUrl}`);
+    console.log(`[Série ${tmdbId}] Retornando URL direta da API Roxano para o cliente: ${roxanoUrl}`);
+    const stream = {
+        playerType: "custom",
+        url: roxanoUrl,
+        name: `Servidor Principal (T${season} E${episode})`,
+    };
 
-    try {
-        const roxanoResponse = await fetch(roxanoUrl, {
-            method: 'GET',
-            redirect: 'manual',
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Referer": "https://primevicio.vercel.app/"
-            }
-        });
+    const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
 
-        if (roxanoResponse.status >= 300 && roxanoResponse.status < 400) {
-            const finalUrl = roxanoResponse.headers.get('location');
-            if (finalUrl) {
-                console.log(`[Série ${tmdbId}] URL resolvida para (MP4): ${finalUrl}`);
-                const stream = {
-                    playerType: "custom",
-                    url: finalUrl,
-                    name: `Servidor Principal (T${season} E${episode})`,
-                };
-                return NextResponse.json({ streams: [stream], ...mediaInfo });
-            }
-        }
-        
-        throw new Error(`Roxano API de séries não retornou um redirecionamento. Status: ${roxanoResponse.status}`);
-
-    } catch (roxanoError) {
-        console.error(`[Série ${tmdbId}] Falha ao resolver a URL da Roxano, tentando fallback para Firestore...`, roxanoError);
-        
-        const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
-        if (firestoreResponse) {
-            return firestoreResponse;
-        }
-
-        return NextResponse.json({ error: "Nenhum stream funcional encontrado." }, { status: 404 });
+    if (firestoreResponse) {
+        return firestoreResponse;
     }
-    // --- FIM DA LÓGICA CORRIGIDA ---
+    
+    return NextResponse.json({ streams: [stream], ...mediaInfo });
+    // --- FIM DA LÓGICA RESTAURADA ---
 
   } catch (error) {
     console.error(`[Série ${tmdbId}] Erro geral ao buscar streams para S${season}E${episode}:`, error);
