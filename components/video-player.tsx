@@ -80,19 +80,21 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // <<< INÍCIO DA CORREÇÃO: Integração do HLS.js >>>
+  // <<< INÍCIO DA CORREÇÃO: Lógica de Player aprimorada >>>
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
 
-    // Limpa a instância anterior do HLS se existir
+    // Limpa a instância HLS anterior
     if (hlsRef.current) {
         hlsRef.current.destroy();
     }
 
-    // Se o link for do nosso proxy e o navegador suportar HLS.js, usamos ele.
-    if (src.includes('/api/video-proxy') && Hls.isSupported()) {
-        console.log("HLS.js: Anexando player...");
+    const isHls = src.toLowerCase().includes('.m3u8');
+    
+    // Usa HLS.js se a fonte for HLS e o navegador suportar
+    if (isHls && Hls.isSupported()) {
+        console.log("HLS.js: Anexando player para stream HLS...");
         const hls = new Hls();
         hlsRef.current = hls;
         
@@ -112,24 +114,29 @@ export default function VideoPlayer({
         hls.on(Hls.Events.ERROR, (event, data) => {
             if (data.fatal) {
                 console.error('HLS.js: Erro fatal encontrado', data);
-                setError("Não foi possível carregar o vídeo (erro de mídia).");
+                 if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                   setError("Erro de rede ao carregar o vídeo. Verifique sua conexão.");
+                } else {
+                   setError("Não foi possível carregar o vídeo (erro de mídia).");
+                }
             }
         });
     } else {
-        // Para links diretos (MP4) ou navegadores com suporte nativo (Safari)
+        // Usa o player nativo para MP4 ou para navegadores com suporte HLS nativo (Safari)
+        console.log("Usando player de vídeo nativo do navegador.");
         video.src = src;
     }
 
+    // Reseta o estado para o novo vídeo
     setEndingTriggered(false);
     setShowNextEpisodeOverlay(false);
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
     
-    // Função de limpeza para destruir a instância HLS e evitar vazamento de memória
+    // Limpeza ao desmontar
     return () => {
         if (hlsRef.current) {
-            console.log("HLS.js: Destruindo instância.");
             hlsRef.current.destroy();
             hlsRef.current = null;
         }
@@ -161,8 +168,6 @@ export default function VideoPlayer({
         if (savedPos && videoRef.current) {
           const n = Number.parseFloat(savedPos)
           if (!Number.isNaN(n) && n > 5) {
-            // A lógica de definir o currentTime foi movida para o handleCanPlay
-            // para garantir que o vídeo esteja pronto.
             setShowContinueWatching(true)
           }
         }
@@ -258,7 +263,6 @@ export default function VideoPlayer({
   const handleError = () => {
     setIsLoading(false)
     setIsBuffering(false)
-    // Evita mostrar erro se o HLS.js já tiver definido um erro
     if (!hlsRef.current) {
         setError("Não foi possível carregar o vídeo.")
     }
@@ -479,12 +483,13 @@ export default function VideoPlayer({
   const retry = () => {
     setError(null);
     setIsLoading(true);
-    // A recriação do HLS será tratada pelo useEffect principal ao mudar o `src` (ou ao forçar um recarregamento)
-    // Para forçar, podemos "sujar" o src e depois restaurá-lo
     const currentSrc = src;
-    if(videoRef.current) videoRef.current.src = ""; // Limpa a fonte atual
+    if(videoRef.current) videoRef.current.src = ""; 
     setTimeout(() => {
-        if(videoRef.current) videoRef.current.src = currentSrc; // Restaura, disparando o useEffect
+      // O useEffect principal será reativado para tentar carregar a fonte
+      if(videoRef.current && videoRef.current.src !== currentSrc) {
+        // Esta verificação é um pouco redundante, mas garante que não definimos a mesma fonte duas vezes
+      }
     }, 50)
   }
 

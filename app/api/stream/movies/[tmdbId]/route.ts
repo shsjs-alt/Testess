@@ -76,16 +76,49 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // LÓGICA ALTERADA: Retorna a URL da Roxano diretamente para o cliente manipular.
+    // --- LÓGICA CORRIGIDA: Resolve o redirecionamento da Roxano API ---
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-    console.log(`[Filme ${tmdbId}] Retornando URL da API Roxano para o cliente: ${roxanoUrl}`);
+    console.log(`[Filme ${tmdbId}] Resolvendo URL da API Roxano: ${roxanoUrl}`);
     
-    const stream = {
-        playerType: "custom", 
-        url: roxanoUrl,
-        name: "Servidor Principal",
-    };
-    return NextResponse.json({ streams: [stream], ...mediaInfo });
+    try {
+      const roxanoResponse = await fetch(roxanoUrl, {
+          method: 'GET',
+          redirect: 'manual', // Impede que o fetch siga o redirect automaticamente
+          headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+              "Referer": "https://primevicio.vercel.app/" 
+          }
+      });
+
+      // Se a resposta for um redirecionamento, pegamos a URL final
+      if (roxanoResponse.status >= 300 && roxanoResponse.status < 400) {
+          const finalUrl = roxanoResponse.headers.get('location');
+          if (finalUrl) {
+              console.log(`[Filme ${tmdbId}] URL resolvida para: ${finalUrl}`);
+              const stream = {
+                  playerType: "custom",
+                  url: finalUrl,
+                  name: "Servidor Principal",
+              };
+              return NextResponse.json({ streams: [stream], ...mediaInfo });
+          }
+      }
+      
+      // Se não for um redirect, algo está errado
+      throw new Error(`Roxano API não retornou um redirecionamento. Status: ${roxanoResponse.status}`);
+
+    } catch (roxanoError) {
+        console.error(`[Filme ${tmdbId}] Falha ao resolver a URL da Roxano, tentando fallback para Firestore...`, roxanoError);
+        
+        // Se a API principal falhar, tenta o fallback do Firestore
+        const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
+        if (firestoreResponse) {
+            return firestoreResponse;
+        }
+
+        return NextResponse.json({ error: "Nenhum stream funcional encontrado." }, { status: 404 });
+    }
+    // --- FIM DA LÓGICA CORRIGIDA ---
 
   } catch (error) {
     console.error(`[Filme ${tmdbId}] Erro geral ao buscar streams:`, error);
