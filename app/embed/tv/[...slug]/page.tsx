@@ -131,8 +131,7 @@ export default function TvEmbedPage() {
         <VideoPlayer
           src={stream.url}
           title={mediaTitle}
-          // <<< CORREÇÃO AQUI >>>
-          downloadUrl={`/download/tv/${tmdbId}/${season}/${episode}`}
+          downloadUrl={`https://primevicio.vercel.app/download/tv/${tmdbId}/${season}/${episode}`}
           rememberPosition={true}
           rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
           hasNextEpisode={hasNextEpisode}

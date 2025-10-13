@@ -18,12 +18,16 @@ export default function TvDownloadPage() {
   // A URL de download agora aponta para a nossa API de download direto
   const downloadApiUrl = `/download/series/${tmdbId}/${season}/${episode}`;
 
-  const handleDownloadClick = () => {
+  const handleDownloadClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (downloadClicked) {
+      e.preventDefault(); // Impede múltiplos cliques
+      return;
+    }
     setDownloadClicked(true);
     
-    // Abre o anúncio em uma nova aba após 3 segundos
+    // Abre o anúncio na mesma aba após 3 segundos
     setTimeout(() => {
-      window.open(adUrl, '_blank');
+      window.location.href = adUrl;
     }, 3000);
   };
 
@@ -36,7 +40,7 @@ export default function TvDownloadPage() {
                     <div className="absolute inset-0 border-t-4 border-yellow-400 rounded-full animate-spin"></div>
                 </div>
                 <h1 className="text-2xl font-bold">O Download iniciou...</h1>
-                <p className="text-zinc-400 mt-2">Se não começar, clique no botão novamente.</p>
+                <p className="text-zinc-400 mt-2">Você será redirecionado em breve. Se o download não começar, clique no botão novamente.</p>
             </>
         ) : (
             <h1 className="text-2xl font-bold mb-6">Clique no botão para iniciar o download</h1>

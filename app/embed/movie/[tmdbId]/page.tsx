@@ -98,8 +98,7 @@ export default function MovieEmbedPage() {
         <VideoPlayer
           src={stream.url}
           title={mediaTitle}
-          // <<< CORREÇÃO AQUI >>>
-          downloadUrl={`/download/movie/${tmdbId}`}
+          downloadUrl={`https://primevicio.vercel.app/download/movie/${tmdbId}`}
           rememberPosition={true}
           rememberPositionKey={`movie-${tmdbId}`}
         />
