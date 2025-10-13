@@ -27,14 +27,12 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                     const firestoreUrl = episodeData.urls[0].url as string;
 
                     if (isDirectStreamLink(firestoreUrl)) {
-                        console.log(`[Série] Link de stream direto do Firestore, enviando diretamente: ${firestoreUrl}`);
                         return NextResponse.json({
                             streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
                             ...mediaInfo
                         });
                     }
-
-                    console.log(`[Série] Link de player embed (iframe) do Firestore: ${firestoreUrl}`);
+                    
                     return NextResponse.json({
                         streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }],
                         ...mediaInfo
@@ -85,7 +83,7 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
-    // NOVA LÓGICA: Retorna a URL da Roxano diretamente para o cliente manipular.
+    // LÓGICA ALTERADA: Retorna a URL da Roxano diretamente para o cliente manipular.
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
     console.log(`[Série ${tmdbId}] Retornando URL da API Roxano para o cliente: ${roxanoUrl}`);
 
