@@ -7,11 +7,6 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-/**
- * Verifica se a URL é um link direto para um arquivo de vídeo (.mp4 ou .m3u8).
- * @param url A URL para verificar.
- * @returns `true` se for um link de stream direto, senão `false`.
- */
 function isDirectStreamLink(url: string): boolean {
     try {
         const path = new URL(url).pathname.toLowerCase().split('?')[0];
@@ -50,8 +45,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
     }
     return null;
 }
-
-const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
 
 export async function GET(
   request: Request,
@@ -92,47 +85,16 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
-    try {
-      const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-      const roxanoResponse = await Promise.race([
-          fetch(roxanoUrl, { redirect: 'follow' }),
-          timeout(5000)
-      ]) as Response;
-    
-      if (roxanoResponse.ok) {
-          const finalUrl = roxanoResponse.url;
-          console.log(`[Série ${tmdbId}] Sucesso com a API Principal (Roxano) para S${season}E${episode}. URL Final: ${finalUrl}`);
-          
-          if (isDirectStreamLink(finalUrl)) {
-            const stream = {
-                playerType: "custom",
-                url: finalUrl,
-                name: `Servidor Principal (T${season} E${episode})`,
-            };
-            return NextResponse.json({ streams: [stream], ...mediaInfo });
-          } else {
-            console.log(`[Série ${tmdbId}] URL da API Principal não é um stream direto, tratando como iframe: ${finalUrl}`);
-            const stream = {
-                playerType: "iframe",
-                url: finalUrl,
-                name: `Servidor Principal (Embed T${season} E${episode})`,
-            };
-            return NextResponse.json({ streams: [stream], ...mediaInfo });
-          }
-      }
-      throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
-    } catch (error) {
-        console.log(`[Série ${tmdbId}] API Principal (Roxano) falhou para S${season}E${episode}, tentando fallback para o Firestore...`, error);
-        
-        const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
-        if (firestoreResponse) {
-            console.log(`[Série ${tmdbId}] Sucesso com o fallback para Firestore para S${season}E${episode}.`);
-            return firestoreResponse;
-        }
-    }
+    // NOVA LÓGICA: Retorna a URL da Roxano diretamente para o cliente manipular.
+    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
+    console.log(`[Série ${tmdbId}] Retornando URL da API Roxano para o cliente: ${roxanoUrl}`);
 
-    console.log(`[Série ${tmdbId}] Nenhuma fonte de stream disponível para S${season}E${episode}.`);
-    return NextResponse.json({ error: "Nenhum stream disponível para este episódio." }, { status: 404 });
+    const stream = {
+        playerType: "custom",
+        url: roxanoUrl,
+        name: `Servidor Principal (T${season} E${episode})`,
+    };
+    return NextResponse.json({ streams: [stream], ...mediaInfo });
 
   } catch (error) {
     console.error(`[Série ${tmdbId}] Erro geral ao buscar streams para S${season}E${episode}:`, error);
