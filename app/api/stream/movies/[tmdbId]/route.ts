@@ -7,11 +7,15 @@ const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-function isDirectMp4Link(url: string): boolean {
+/**
+ * Verifica se a URL é um link direto para um arquivo de vídeo (.mp4 ou .m3u8).
+ * @param url A URL para verificar.
+ * @returns `true` se for um link de stream direto, senão `false`.
+ */
+function isDirectStreamLink(url: string): boolean {
     try {
-        const path = new URL(url).pathname;
-        // Verifica se termina com .mp4, opcionalmente com parâmetros de URL depois
-        return path.toLowerCase().split('?')[0].endsWith('.mp4');
+        const path = new URL(url).pathname.toLowerCase().split('?')[0];
+        return path.endsWith('.mp4') || path.endsWith('.m3u8');
     } catch (error) {
         return false;
     }
@@ -23,16 +27,14 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url as string;
 
-            // CORRIGIDO: Se for um link .mp4, envia a URL diretamente para o player, sem proxy.
-            if (isDirectMp4Link(firestoreUrl)) {
-                console.log(`[Filme] Link .mp4 direto do Firestore, enviando diretamente: ${firestoreUrl}`);
+            if (isDirectStreamLink(firestoreUrl)) {
+                console.log(`[Filme] Link de stream direto do Firestore, enviando diretamente: ${firestoreUrl}`);
                 return NextResponse.json({
                     streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
                     ...mediaInfo
                 });
             }
 
-            // Para QUALQUER OUTRO tipo de link, assume que é um player embedável e usa iframe
             console.log(`[Filme] Link de player embed (iframe) do Firestore: ${firestoreUrl}`);
             return NextResponse.json({
                 streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }],
@@ -93,12 +95,23 @@ export async function GET(
       if (roxanoResponse.ok) {
           const finalUrl = roxanoResponse.url;
           console.log(`[Filme ${tmdbId}] Sucesso com a API Principal (Roxano). URL Final: ${finalUrl}`);
-          const stream = {
-              playerType: "custom", 
-              url: finalUrl,
-              name: "Servidor Principal",
-          };
-          return NextResponse.json({ streams: [stream], ...mediaInfo });
+          
+          if (isDirectStreamLink(finalUrl)) {
+            const stream = {
+                playerType: "custom", 
+                url: finalUrl,
+                name: "Servidor Principal",
+            };
+            return NextResponse.json({ streams: [stream], ...mediaInfo });
+          } else {
+            console.log(`[Filme ${tmdbId}] URL da API Principal não é um stream direto, tratando como iframe: ${finalUrl}`);
+            const stream = {
+                playerType: "iframe",
+                url: finalUrl,
+                name: "Servidor Principal (Embed)",
+            };
+            return NextResponse.json({ streams: [stream], ...mediaInfo });
+          }
       }
       throw new Error(`API Principal (Roxano) respondeu com status: ${roxanoResponse.status}`);
     } catch (error) {
