@@ -1,6 +1,6 @@
 // app/api/video-proxy/route.ts
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
@@ -13,66 +13,35 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const range = request.headers.get('range') || 'bytes=0-';
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36';
-    // Usar a origem da URL do vídeo como referenciador é uma prática mais segura
-    const referer = new URL(videoUrl).origin + '/';
-
-    // --- LÓGICA CORRIGIDA ---
-
-    // Passo 1: Fazer a requisição inicial sem seguir o redirecionamento automaticamente.
-    // Isso nos permite capturar o link final para onde o script PHP aponta.
-    const initialResponse = await fetch(videoUrl, {
-      method: 'GET',
+    // Busca o vídeo no servidor de origem
+    const videoResponse = await fetch(videoUrl, {
       headers: {
-        'User-Agent': userAgent,
-        'Referer': referer,
-      },
-      redirect: 'manual', // Impedir que o fetch siga o redirect automaticamente
-    });
-
-    let finalVideoUrl = videoUrl;
-    
-    // Passo 2: Verificar se a resposta é um redirecionamento (status 3xx).
-    if (initialResponse.status >= 300 && initialResponse.status < 400) {
-      const location = initialResponse.headers.get('Location');
-      if (location) {
-        // A nova URL para o vídeo é o cabeçalho 'Location'
-        finalVideoUrl = new URL(location, videoUrl).toString();
-        console.log(`[PROXY] Redirecionamento detectado para: ${finalVideoUrl}`);
-      } else {
-        // Se for um redirect sem o cabeçalho 'Location', não é possível continuar.
-        throw new Error(`[PROXY] Redirect (status ${initialResponse.status}) sem cabeçalho 'Location'.`);
-      }
-    }
-
-    // Passo 3: Buscar o conteúdo do vídeo da URL final, enviando os cabeçalhos corretos.
-    const videoResponse = await fetch(finalVideoUrl, {
-      headers: {
-        'User-Agent': userAgent,
-        'Referer': referer,
-        'Range': range, // Encaminhar o cabeçalho Range é essencial para o streaming/busca no vídeo.
+        // <<< MUDANÇA AQUI: Adicionados Headers para simular um navegador >>>
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer': videoUrl, // Usar a própria URL como referenciador
+        'Range': request.headers.get('range') || 'bytes=0-',
       },
     });
 
-    if (!videoResponse.ok || !videoResponse.body) {
-      console.error(`[PROXY] Erro ao buscar do URL final (${finalVideoUrl}): Status ${videoResponse.status}`);
-      return new Response('Falha ao buscar o vídeo da origem final.', { status: videoResponse.status });
+    // Verifica se a fonte externa respondeu com sucesso
+    if (!videoResponse.ok) {
+      console.error(`[PROXY] Erro ao buscar do URL de origem: Status ${videoResponse.status}`);
+      return new Response('Falha ao buscar o vídeo da origem', { status: videoResponse.status });
     }
 
-    // Passo 4: Fazer o stream (transmitir) da resposta do vídeo para o cliente.
+    // Obtém o stream (fluxo de dados) da resposta do vídeo
     const stream = videoResponse.body;
-    const responseHeaders = new Headers({
-      'Content-Type': videoResponse.headers.get('Content-Type') || 'video/mp4',
-      'Content-Length': videoResponse.headers.get('Content-Length') || '',
-      'Content-Range': videoResponse.headers.get('Content-Range') || '',
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=86400, immutable',
-    });
 
-    // Retorna o fluxo de vídeo com os cabeçalhos corretos.
+    // Cria uma nova resposta, transmitindo o corpo do vídeo original para o cliente
+    const responseHeaders = new Headers();
+    responseHeaders.set('Content-Type', videoResponse.headers.get('Content-Type') || 'video/mp4');
+    responseHeaders.set('Content-Length', videoResponse.headers.get('Content-Length') || '');
+    responseHeaders.set('Content-Range', videoResponse.headers.get('Content-Range') || '');
+    responseHeaders.set('Accept-Ranges', 'bytes');
+    responseHeaders.set('Cache-Control', 'public, max-age=604800, immutable'); // Cache mais agressivo
+
     return new Response(stream, {
-      status: videoResponse.status, // Geralmente 206 para conteúdo parcial (streaming)
+      status: videoResponse.status,
       headers: responseHeaders,
     });
 

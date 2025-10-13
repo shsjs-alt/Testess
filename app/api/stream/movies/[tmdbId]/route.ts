@@ -76,14 +76,13 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // LÓGICA CORRIGIDA: Usa o proxy para a URL da Roxano.
+    // LÓGICA ALTERADA: Retorna a URL da Roxano diretamente para o cliente manipular.
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-    const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
-    console.log(`[Filme ${tmdbId}] Retornando URL do proxy para o cliente: ${proxyUrl}`);
+    console.log(`[Filme ${tmdbId}] Retornando URL da API Roxano para o cliente: ${roxanoUrl}`);
     
     const stream = {
         playerType: "custom", 
-        url: proxyUrl, // <<< MUDANÇA AQUI
+        url: roxanoUrl,
         name: "Servidor Principal",
     };
     return NextResponse.json({ streams: [stream], ...mediaInfo });
