@@ -1,9 +1,11 @@
 // app/api/video-proxy/route.ts
-import { NextRequest } from 'next/server';
+
+// Removida a importação de 'NextRequest' para evitar o erro de tipo.
+// A função agora usa o 'Request' padrão, que tem a mesma funcionalidade necessária aqui.
 
 export const runtime = 'edge';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) { // Alterado de NextRequest para Request
   const { searchParams } = new URL(request.url);
   const videoUrl = searchParams.get('videoUrl');
 
@@ -12,23 +14,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // --- LÓGICA DE CABEÇALHOS APRIMORADA ---
-    // Simula um navegador real para evitar bloqueios de segurança.
     const requestHeaders = new Headers();
     requestHeaders.set('Accept', 'video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5');
     requestHeaders.set('Accept-Language', 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7');
     requestHeaders.set('Connection', 'keep-alive');
-    requestHeaders.set('Referer', 'https://primevicio.vercel.app/'); // Usando o seu próprio site como Referer.
+    requestHeaders.set('Referer', 'https://primevicio.vercel.app/');
     requestHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
     
-    // Repassa o cabeçalho 'Range' do player para a fonte original.
-    // Isso é ESSENCIAL para o streaming funcionar (permitir avançar/retroceder o vídeo).
     const range = request.headers.get('range');
     if (range) {
       requestHeaders.set('Range', range);
     }
     
-    // Busca o vídeo no servidor de origem com os cabeçalhos aprimorados.
     const videoResponse = await fetch(videoUrl, {
       method: 'GET',
       headers: requestHeaders,
@@ -45,7 +42,7 @@ export async function GET(request: NextRequest) {
     videoResponse.headers.forEach((value, key) => {
       responseHeaders.append(key, value);
     });
-    responseHeaders.set('Accept-Ranges', 'bytes'); // Garante que o navegador saiba que pode fazer requisições parciais.
+    responseHeaders.set('Accept-Ranges', 'bytes');
 
     return new Response(stream, {
       status: videoResponse.status,
