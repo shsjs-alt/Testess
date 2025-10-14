@@ -67,6 +67,7 @@ export async function GET(
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     
+    // 1. Checa se o conteúdo deve ser forçado a usar o Firestore
     if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         console.log(`[Filme ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
@@ -76,10 +77,16 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // --- LÓGICA FINAL: Retornar o link direto da Roxano para o player ---
-    // Exatamente como a API de séries faz, e como o seu teste em HTML provou que funciona.
+    // 2. Tenta o Firestore primeiro (se existir e não for forçado) como uma alternativa prioritária se disponível
+    const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
+    if (firestoreResponse) {
+        console.log(`[Filme ${tmdbId}] Encontrado stream no Firestore. Usando como prioridade.`);
+        return firestoreResponse;
+    }
+
+    // 3. Se não houver nada no Firestore, usa a API Roxano como principal
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-    console.log(`[Filme ${tmdbId}] Retornando URL direta da Roxano para o player: ${roxanoUrl}`);
+    console.log(`[Filme ${tmdbId}] Retornando URL da API Roxano para o cliente: ${roxanoUrl}`);
 
     const stream = {
         playerType: "custom",
@@ -87,15 +94,7 @@ export async function GET(
         name: "Servidor Principal",
     };
 
-    // Tenta usar o Firestore como fallback, se houver
-    const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
-    if (firestoreResponse) {
-        return firestoreResponse;
-    }
-
-    // Se não houver fallback, retorna o stream da Roxano
     return NextResponse.json({ streams: [stream], ...mediaInfo });
-    // --- FIM DA LÓGICA FINAL ---
 
   } catch (error) {
     console.error(`[Filme ${tmdbId}] Erro geral ao buscar streams:`, error);
