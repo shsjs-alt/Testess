@@ -76,33 +76,26 @@ export async function GET(
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // --- LÓGICA CORRIGIDA: Usa o proxy interno para filmes ---
-    try {
-        const roxanoSourceUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-        
-        // Monta a URL do seu próprio proxy para encapsular a URL da Roxano
-        const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoSourceUrl)}`;
+    // --- LÓGICA FINAL: Retornar o link direto da Roxano para o player ---
+    // Exatamente como a API de séries faz, e como o seu teste em HTML provou que funciona.
+    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+    console.log(`[Filme ${tmdbId}] Retornando URL direta da Roxano para o player: ${roxanoUrl}`);
 
-        console.log(`[Filme ${tmdbId}] Retornando URL via proxy: ${proxyUrl}`);
+    const stream = {
+        playerType: "custom",
+        url: roxanoUrl,
+        name: "Servidor Principal",
+    };
 
-        const stream = {
-            playerType: "custom",
-            url: proxyUrl, // O player receberá a URL do seu proxy
-            name: "Servidor Principal",
-        };
-        return NextResponse.json({ streams: [stream], ...mediaInfo });
-
-    } catch (error) {
-        console.error(`[Filme ${tmdbId}] Erro ao montar URL do proxy, tentando fallback...`, error);
-        
-        const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
-        if (firestoreResponse) {
-            return firestoreResponse;
-        }
-
-        return NextResponse.json({ error: "Nenhum stream funcional encontrado." }, { status: 404 });
+    // Tenta usar o Firestore como fallback, se houver
+    const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
+    if (firestoreResponse) {
+        return firestoreResponse;
     }
-    // --- FIM DA LÓGICA CORRIGIDA ---
+
+    // Se não houver fallback, retorna o stream da Roxano
+    return NextResponse.json({ streams: [stream], ...mediaInfo });
+    // --- FIM DA LÓGICA FINAL ---
 
   } catch (error) {
     console.error(`[Filme ${tmdbId}] Erro geral ao buscar streams:`, error);
