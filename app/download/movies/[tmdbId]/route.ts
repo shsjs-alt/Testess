@@ -20,7 +20,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         const docData = docSnap.data();
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url as string;
-            // Verifica se é um link de vídeo direto para o nosso player
             if (isDirectStreamLink(firestoreUrl)) {
                 console.log(`[Filme ${docSnap.id}] Encontrado stream direto no Firestore: ${firestoreUrl}`);
                 return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
@@ -40,6 +39,9 @@ export async function GET(
   }
 
   try {
+    const { protocol, host } = new URL(request.url);
+    const baseUrl = `${protocol}//${host}`;
+
     let mediaInfo = { title: null, originalTitle: null, backdropPath: null };
     try {
         const tmdbRes = await fetch(`${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
@@ -63,10 +65,12 @@ export async function GET(
         return firestoreResponse; // Se encontrou link direto, retorna imediatamente
     }
 
-    // 2. Se não encontrou no Firestore, usa a API Roxanoplay como fallback
+    // 2. Se não encontrou no Firestore, usa a API Roxanoplay via PROXY
     const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/hostmov.php?id=${tmdbId}`;
-    console.log(`[Filme ${tmdbId}] Usando fallback da API RoxanoPlay.`);
-    return NextResponse.json({ streams: [{ playerType: "custom", url: roxanoUrl, name: "Servidor Secundário" }], ...mediaInfo });
+    const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
+    
+    console.log(`[Filme ${tmdbId}] Usando fallback da API RoxanoPlay via proxy.`);
+    return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
 
   } catch (error) {
     console.error(`[Filme ${tmdbId}] Erro geral:`, error);
