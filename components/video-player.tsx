@@ -80,86 +80,77 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // <<< INÍCIO DA CORREÇÃO DEFINITIVA DO PLAYER >>>
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !src) return;
-
-    // Garante que qualquer instância anterior do HLS seja destruída
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
-    // Se o HLS.js é suportado (Chrome, Firefox, etc.), SEMPRE tenta usá-lo primeiro.
-    if (Hls.isSupported()) {
-        console.log("HLS.js: Anexando player...");
-        const hls = new Hls({
-            // Configurações para maior resiliência a falhas de rede
-            fragLoadPolicy: {
-              default: {
-                maxTimeToFirstByteMs: 15000, maxLoadTimeMs: 90000, timeoutMs: 90000,
-                maxRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 8000,
-              },
-            },
-        });
-        hlsRef.current = hls;
-
-        hls.loadSource(src);
-        hls.attachMedia(video);
-
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            console.log("HLS.js: Manifesto carregado com sucesso.");
-            if (!isIphone && !showContinueWatching) {
-                video.play().catch(() => {
-                    console.warn("Autoplay foi impedido pelo navegador.");
-                    setIsPlaying(false);
-                });
-            }
-        });
-
-        hls.on(Hls.Events.ERROR, (event, data) => {
-            console.error('HLS.js: Erro encontrado', data);
-            // Se o HLS falhar (ex: não é um stream HLS, mas um MP4),
-            // ele destrói a si mesmo e tenta carregar o vídeo diretamente.
-            if (data.fatal) {
-                console.warn("HLS.js: Erro fatal. Tentando carregar como fonte de vídeo direta (fallback)...");
-                hls.destroy();
-                hlsRef.current = null;
-                // Define o `src` diretamente no elemento de vídeo
-                if (video.src !== src) {
-                  video.src = src;
-                }
-            }
-        });
-    }
-    // Se o HLS.js NÃO é suportado (ex: Safari), o navegador provavelmente tem suporte nativo.
-    // Isso também funciona para arquivos MP4 em qualquer navegador.
-    else {
-        console.log("Player: HLS.js não suportado. Usando player nativo do navegador.");
-        video.src = src;
-    }
-
-    // Reseta o estado para o novo vídeo
-    setEndingTriggered(false);
-    setShowNextEpisodeOverlay(false);
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-    }
-
-    // Função de limpeza
-    return () => {
+    // <<< INÍCIO DA CORREÇÃO PRINCIPAL DO PLAYER >>>
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !src) return;
+    
+        // Sempre que a fonte de vídeo mudar, destrói a instância HLS anterior se existir.
         if (hlsRef.current) {
             hlsRef.current.destroy();
             hlsRef.current = null;
         }
-        if (video) {
-            video.removeAttribute('src');
-            video.load();
+    
+        // Verifica se a URL é de um stream HLS (contém .m3u8).
+        const isHls = src.toLowerCase().includes('.m3u8');
+        
+        // Se for HLS e o navegador suportar HLS.js...
+        if (isHls && Hls.isSupported()) {
+            console.log("HLS.js: Anexando player para stream HLS...");
+            const hls = new Hls();
+            hlsRef.current = hls;
+            
+            hls.loadSource(src);
+            hls.attachMedia(video);
+    
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                console.log("HLS.js: Manifesto carregado.");
+                if (!isIphone && !showContinueWatching) {
+                    video.play().catch(() => {
+                        console.warn("Autoplay foi impedido pelo navegador.");
+                        setIsPlaying(false);
+                    });
+                }
+            });
+    
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    console.error('HLS.js: Erro fatal encontrado', data);
+                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                       setError("Erro de rede ao carregar o vídeo. Verifique sua conexão.");
+                    } else {
+                       setError("Não foi possível carregar o vídeo (erro de mídia).");
+                    }
+                }
+            });
+        } else {
+            // Se NÃO for .m3u8 (ex: .mp4, ou nosso proxy /api/video-proxy que não tem extensão)
+            // ou se o navegador já suporta HLS nativamente (como o Safari)
+            console.log("Player: Anexando fonte de vídeo direta (MP4, Proxy, ou HLS Nativo).");
+            video.src = src;
+            // O evento 'onCanPlay' do vídeo cuidará de dar o play.
         }
-    };
-  }, [src, isIphone, showContinueWatching]);
-  // <<< FIM DA CORREÇÃO DEFINITIVA DO PLAYER >>>
+    
+        // Reseta os estados relacionados ao final do vídeo para o próximo episódio.
+        setEndingTriggered(false);
+        setShowNextEpisodeOverlay(false);
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+        
+        // Função de limpeza: para o vídeo e limpa a instância HLS ao trocar de fonte.
+        return () => {
+            if (hlsRef.current) {
+                hlsRef.current.destroy();
+                hlsRef.current = null;
+            }
+            if (video) {
+                video.removeAttribute('src');
+                video.load();
+            }
+        };
+    }, [src, isIphone, showContinueWatching]);
+    // <<< FIM DA CORREÇÃO PRINCIPAL DO PLAYER >>>
 
 
   useEffect(() => {
@@ -276,7 +267,9 @@ export default function VideoPlayer({
   const handleError = () => {
     setIsLoading(false)
     setIsBuffering(false)
-    setError("Não foi possível carregar o vídeo.")
+    if (!hlsRef.current) {
+        setError("Não foi possível carregar o vídeo.")
+    }
   }
 
   const handleTimeUpdate = () => {
@@ -352,7 +345,6 @@ export default function VideoPlayer({
     } else {
       v.pause()
     }
-    setIsPlaying(!v.paused)
   }, [])
 
   const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -494,9 +486,15 @@ export default function VideoPlayer({
   const retry = () => {
     setError(null);
     setIsLoading(true);
-    // Disparar o useEffect principal para tentar recarregar, alterando a 'key' ou 'src'
-    // A forma mais simples é forçar um recarregamento da página de embed
-    window.location.reload();
+    const video = videoRef.current;
+    if (video) {
+        const currentSrc = src;
+        video.src = ''; 
+        video.load();
+        setTimeout(() => {
+            video.src = currentSrc;
+        }, 50);
+    }
   }
 
   useEffect(() => {
