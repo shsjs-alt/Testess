@@ -28,7 +28,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                     if (isDirectStreamLink(firestoreUrl)) {
                         return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
                     }
-                     // Se não for um link direto, trata como iframe
                     return NextResponse.json({ streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
                 }
             }
@@ -48,9 +47,6 @@ export async function GET(
   }
 
   try {
-    const { protocol, host } = new URL(request.url);
-    const baseUrl = `${protocol}//${host}`;
-
     let mediaInfo = { title: null, originalTitle: null, backdropPath: null };
     try {
       const tmdbRes = await fetch(`${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
@@ -71,15 +67,14 @@ export async function GET(
     const docSnap = await getDoc(docRef);
     const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
     if (firestoreResponse) {
-        return firestoreResponse; // Se encontrou, retorna imediatamente
+        return firestoreResponse;
     }
     
-    // 2. Se não encontrou no Firestore, usa a API Roxanoplay como fallback via PROXY
-    console.log(`[Série ${tmdbId}] Nenhum stream no Firestore. Usando fallback da API RoxanoPlay via proxy para S${season}E${episode}.`);
+    // 2. Se não encontrou, usa a API Roxanoplay diretamente
+    console.log(`[Série ${tmdbId}] Nenhum stream no Firestore. Usando fallback direto da API RoxanoPlay para S${season}E${episode}.`);
     const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
-    const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
 
-    return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
+    return NextResponse.json({ streams: [{ playerType: "custom", url: roxanoUrl, name: "Servidor Secundário" }], ...mediaInfo });
 
   } catch (error) {
     console.error(`[Série ${tmdbId}] Erro geral para S${season}E${episode}:`, error);
