@@ -84,13 +84,15 @@ export async function GET(
         return firestoreResponse;
     }
 
-    // 3. Se não houver nada no Firestore, usa a API Roxano como principal
+    // 3. Se não houver nada no Firestore, usa a API Roxano como principal, passando pelo proxy
     const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-    console.log(`[Filme ${tmdbId}] Retornando URL da API Roxano para o cliente: ${roxanoUrl}`);
+    // ✨ CORREÇÃO APLICADA AQUI ✨
+    const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
+    console.log(`[Filme ${tmdbId}] Retornando URL da API Roxano via proxy local: ${proxyUrl}`);
 
     const stream = {
         playerType: "custom",
-        url: roxanoUrl,
+        url: proxyUrl, // Usando a URL do proxy
         name: "Servidor Principal",
     };
 

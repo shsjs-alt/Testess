@@ -82,24 +82,27 @@ export async function GET(
         }
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
-    
-    // --- LÓGICA RESTAURADA PARA O ESTADO ORIGINAL QUE FUNCIONAVA ---
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-    console.log(`[Série ${tmdbId}] Retornando URL direta da API Roxano para o cliente: ${roxanoUrl}`);
-    const stream = {
-        playerType: "custom",
-        url: roxanoUrl,
-        name: `Servidor Principal (T${season} E${episode})`,
-    };
 
+    // Prioriza o Firestore se houver um link disponível
     const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
-
     if (firestoreResponse) {
+        console.log(`[Série ${tmdbId}] Encontrado stream no Firestore. Usando como prioridade.`);
         return firestoreResponse;
     }
     
+    // Se não, usa a API Roxano via proxy
+    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
+    // ✨ CORREÇÃO APLICADA AQUI ✨
+    const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
+    console.log(`[Série ${tmdbId}] Retornando URL da API Roxano via proxy local: ${proxyUrl}`);
+    
+    const stream = {
+        playerType: "custom",
+        url: proxyUrl, // Usando a URL do proxy
+        name: `Servidor Principal (T${season} E${episode})`,
+    };
+    
     return NextResponse.json({ streams: [stream], ...mediaInfo });
-    // --- FIM DA LÓGICA RESTAURADA ---
 
   } catch (error) {
     console.error(`[Série ${tmdbId}] Erro geral ao buscar streams para S${season}E${episode}:`, error);
