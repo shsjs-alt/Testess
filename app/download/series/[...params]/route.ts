@@ -36,6 +36,13 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
     return null;
 }
 
+// Função para extrair o link .m3u8 do HTML
+function extractM3u8Url(html: string): string | null {
+    const regex = /(https?:\/\/[^'"]+\.(?:m3u8|mp4))/i;
+    const match = html.match(regex);
+    return match ? match[0] : null;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { params: string[] } }
@@ -73,12 +80,25 @@ export async function GET(
         return firestoreResponse;
     }
     
-    // 2. Se não encontrou, "embrulha" o link da Roxano no nosso proxy local
-    console.log(`[Série ${tmdbId} S${season}E${episode}] Usando fallback da RoxanoPlay via proxy.`);
-    const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
-    const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
+    // 2. Se não encontrou, raspa a URL da Roxano
+    console.log(`[Série ${tmdbId} S${season}E${episode}] Raspando RoxanoPlay...`);
+    const roxanoPageUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
+    const pageResponse = await fetch(roxanoPageUrl);
+    if (!pageResponse.ok) {
+        throw new Error("Página da Roxano não encontrada.");
+    }
+    const pageHtml = await pageResponse.text();
+    const scrapedUrl = extractM3u8Url(pageHtml);
 
-    return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
+    if (scrapedUrl) {
+        console.log(`[Série ${tmdbId}] URL extraída: ${scrapedUrl}`);
+        // 3. Passa a URL raspada pelo nosso proxy
+        const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(scrapedUrl)}`;
+        return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
+    }
+
+    console.error(`[Série ${tmdbId}] Não foi possível extrair o link do vídeo da página.`);
+    return NextResponse.json({ error: "Nenhum stream disponível para este episódio no momento." }, { status: 404 });
 
   } catch (error: any) {
     console.error(`[Série ${tmdbId}] Erro geral para S${season}E${episode}:`, error.message);
