@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { firestore } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/proxys.php";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
@@ -67,21 +66,8 @@ export async function GET(
     const docSnap = await getDoc(docRef);
     const docData = docSnap.exists() ? docSnap.data() : null;
 
-    if (docData?.forceFirestore === true) {
-        const firestoreUrl = await getFirestoreStreamUrl(docData, season, episodeNum);
-        if (firestoreUrl) return fetchAndStream(firestoreUrl, mediaTitle);
-        return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
-    }
-    
-    try {
-      const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-      return await fetchAndStream(roxanoUrl, mediaTitle);
-    } catch (error) {
-       console.log("Download da API Principal de séries falhou, tentando fallback para o Firestore...");
-    }
-
-    const firestoreFallbackUrl = await getFirestoreStreamUrl(docData, season, episodeNum);
-    if (firestoreFallbackUrl) return fetchAndStream(firestoreFallbackUrl, mediaTitle);
+    const firestoreUrl = await getFirestoreStreamUrl(docData, season, episodeNum);
+    if (firestoreUrl) return fetchAndStream(firestoreUrl, mediaTitle);
 
     return NextResponse.json({ error: "Nenhum link de download disponível." }, { status: 404 });
 
