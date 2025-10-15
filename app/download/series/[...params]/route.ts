@@ -1,42 +1,39 @@
-// app/api/download/series/[...params]/route.ts
+// app/api/stream/series/[...params]/route.ts
 import { NextResponse } from "next/server";
 import { firestore } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, DocumentSnapshot } from "firebase/firestore";
 
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-async function getFirestoreStreamUrl(docData: any, season: string, episodeNum: number) {
-    if (docData) {
-        const seasonData = docData.seasons?.[season];
-        if (seasonData && Array.isArray(seasonData.episodes)) {
-            const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
-            if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
-                return episodeData.urls[0].url;
+function isDirectStreamLink(url: string): boolean {
+    try {
+        const path = new URL(url).pathname.toLowerCase().split('?')[0];
+        return path.endsWith('.mp4') || path.endsWith('.m3u8');
+    } catch (error) {
+        return false;
+    }
+}
+
+async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
+    if (docSnap.exists()) {
+        const docData = docSnap.data();
+        if (docData) {
+            const seasonData = docData.seasons?.[season];
+            if (seasonData && Array.isArray(seasonData.episodes)) {
+                const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
+                if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
+                    const firestoreUrl = episodeData.urls[0].url as string;
+                    // Verifica se é um link de vídeo direto para o nosso player
+                    if (isDirectStreamLink(firestoreUrl)) {
+                        console.log(`[Série ${docSnap.id}] Encontrado stream direto no Firestore: ${firestoreUrl}`);
+                        return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
+                    }
+                }
             }
         }
     }
     return null;
-}
-
-async function fetchAndStream(url: string, title: string) {
-    const response = await fetch(url, {
-        headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Referer": "https://www.google.com/"
-        }
-    });
-
-    if (!response.ok || !response.body) {
-        throw new Error(`Falha ao buscar o vídeo de ${url}. Status: ${response.status}`);
-    }
-
-    const headers = new Headers({
-        'Content-Type': 'video/mp4',
-        'Content-Disposition': `attachment; filename="${title.replace(/[^a-zA-Z0-9 ]/g, '')}.mp4"`,
-    });
-
-    return new NextResponse(response.body, { headers });
 }
 
 export async function GET(
@@ -45,34 +42,41 @@ export async function GET(
 ) {
   const [tmdbId, season, episode] = params.params;
   const episodeNum = parseInt(episode, 10);
-
   if (!tmdbId || !season || isNaN(episodeNum)) {
     return NextResponse.json({ error: "ID, temporada e episódio são necessários." }, { status: 400 });
   }
 
   try {
-    let mediaTitle = `S${season}E${episode}`;
-     try {
+    let mediaInfo = { title: null, originalTitle: null, backdropPath: null };
+    try {
       const tmdbRes = await fetch(`${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
       if (tmdbRes.ok) {
         const tmdbData = await tmdbRes.json();
-        mediaTitle = `${tmdbData.name} S${season}E${episode}`;
+        mediaInfo = {
+            title: tmdbData.name,
+            originalTitle: tmdbData.original_name,
+            backdropPath: tmdbData.backdrop_path,
+        };
       }
-    } catch (e) {
-        console.warn("API de Download: Não foi possível buscar título do TMDB")
+    } catch (tmdbError) {
+      console.warn(`API de Séries: Não foi possível buscar informações do TMDB para a série: ${tmdbId}`, tmdbError);
     }
-
+    
+    // 1. Tenta buscar no Firestore um link direto (.mp4, .m3u8)
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
-    const docData = docSnap.exists() ? docSnap.data() : null;
+    const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
+    if (firestoreResponse) {
+        return firestoreResponse; // Se encontrou, retorna imediatamente
+    }
+    
+    // 2. Se não encontrou no Firestore, usa a API Roxanoplay como fallback
+    const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
+    console.log(`[Série ${tmdbId}] Usando fallback da API RoxanoPlay para S${season}E${episode}.`);
+    return NextResponse.json({ streams: [{ playerType: "custom", url: roxanoUrl, name: "Servidor Secundário" }], ...mediaInfo });
 
-    const firestoreUrl = await getFirestoreStreamUrl(docData, season, episodeNum);
-    if (firestoreUrl) return fetchAndStream(firestoreUrl, mediaTitle);
-
-    return NextResponse.json({ error: "Nenhum link de download disponível." }, { status: 404 });
-
-  } catch (error: any) {
-    console.error(`Erro ao processar download para a série ${tmdbId} S${season}E${episode}:`, error);
-    return NextResponse.json({ error: error.message || "Falha ao processar o download." }, { status: 500 });
+  } catch (error) {
+    console.error(`[Série ${tmdbId}] Erro geral para S${season}E${episode}:`, error);
+    return NextResponse.json({ error: "Falha ao buscar streams" }, { status: 500 });
   }
 }
