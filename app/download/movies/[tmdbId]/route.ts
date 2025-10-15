@@ -30,13 +30,6 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     return null;
 }
 
-// Função para extrair o link .m3u8 do HTML
-function extractM3u8Url(html: string): string | null {
-    const regex = /(https?:\/\/[^'"]+\.(?:m3u8|mp4))/i;
-    const match = html.match(regex);
-    return match ? match[0] : null;
-}
-
 export async function GET(
   request: Request,
   { params }: { params: { tmdbId: string } }
@@ -73,25 +66,12 @@ export async function GET(
         return firestoreResponse;
     }
 
-    // 2. Se não encontrou, raspa a URL da Roxano
-    console.log(`[Filme ${tmdbId}] Raspando RoxanoPlay...`);
-    const roxanoPageUrl = `https://roxanoplay.bb-bet.top/pages/hostmov.php?id=${tmdbId}`;
-    const pageResponse = await fetch(roxanoPageUrl);
-    if (!pageResponse.ok) {
-        throw new Error("Página da Roxano não encontrada.");
-    }
-    const pageHtml = await pageResponse.text();
-    const scrapedUrl = extractM3u8Url(pageHtml);
-
-    if (scrapedUrl) {
-        console.log(`[Filme ${tmdbId}] URL extraída: ${scrapedUrl}`);
-        // 3. Passa a URL raspada pelo nosso proxy
-        const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(scrapedUrl)}`;
-        return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
-    }
-
-    console.error(`[Filme ${tmdbId}] Não foi possível extrair o link do vídeo da página.`);
-    return NextResponse.json({ error: "Nenhum stream disponível para este filme no momento." }, { status: 404 });
+    // 2. Se não encontrou, "embrulha" o link da Roxano no nosso proxy local
+    console.log(`[Filme ${tmdbId}] Usando fallback da RoxanoPlay via proxy.`);
+    const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/hostmov.php?id=${tmdbId}`;
+    const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
+    
+    return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
 
   } catch (error: any) {
     console.error(`[Filme ${tmdbId}] Erro geral:`, error.message);
