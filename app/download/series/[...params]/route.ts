@@ -24,10 +24,12 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                 const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
                 if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
                     const firestoreUrl = episodeData.urls[0].url as string;
+                    console.log(`[Série ${docSnap.id}] Encontrado stream no Firestore: ${firestoreUrl}`);
                     if (isDirectStreamLink(firestoreUrl)) {
-                        console.log(`[Série ${docSnap.id}] Encontrado stream direto no Firestore: ${firestoreUrl}`);
                         return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
                     }
+                     // Se não for um link direto, trata como iframe
+                    return NextResponse.json({ streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
                 }
             }
         }
@@ -64,7 +66,7 @@ export async function GET(
       console.warn(`API de Séries: Não foi possível buscar informações do TMDB para a série: ${tmdbId}`, tmdbError);
     }
     
-    // 1. Tenta buscar no Firestore um link direto (.mp4, .m3u8)
+    // 1. Tenta buscar no Firestore
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
@@ -72,11 +74,11 @@ export async function GET(
         return firestoreResponse; // Se encontrou, retorna imediatamente
     }
     
-    // 2. Se não encontrou no Firestore, usa a API Roxanoplay via PROXY
+    // 2. Se não encontrou no Firestore, usa a API Roxanoplay como fallback via PROXY
+    console.log(`[Série ${tmdbId}] Nenhum stream no Firestore. Usando fallback da API RoxanoPlay via proxy para S${season}E${episode}.`);
     const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
     const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
 
-    console.log(`[Série ${tmdbId}] Usando fallback da API RoxanoPlay via proxy para S${season}E${episode}.`);
     return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
 
   } catch (error) {

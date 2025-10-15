@@ -20,10 +20,12 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         const docData = docSnap.data();
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url as string;
+            console.log(`[Filme ${docSnap.id}] Encontrado stream no Firestore: ${firestoreUrl}`);
             if (isDirectStreamLink(firestoreUrl)) {
-                console.log(`[Filme ${docSnap.id}] Encontrado stream direto no Firestore: ${firestoreUrl}`);
                 return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
             }
+            // Se não for um link direto, trata como iframe
+            return NextResponse.json({ streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Principal" }], ...mediaInfo });
         }
     }
     return null;
@@ -57,19 +59,19 @@ export async function GET(
         console.warn(`API de Filmes: Não foi possível buscar informações do TMDB para o filme: ${tmdbId}`, tmdbError);
     }
     
-    // 1. Tenta buscar no Firestore um link direto (.mp4, .m3u8)
+    // 1. Tenta buscar no Firestore
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
     if (firestoreResponse) {
-        return firestoreResponse; // Se encontrou link direto, retorna imediatamente
+        return firestoreResponse; // Se encontrou, retorna imediatamente
     }
 
-    // 2. Se não encontrou no Firestore, usa a API Roxanoplay via PROXY
+    // 2. Se não encontrou no Firestore, usa a API Roxanoplay como fallback via PROXY
+    console.log(`[Filme ${tmdbId}] Nenhum stream no Firestore. Usando fallback da API RoxanoPlay via proxy.`);
     const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/hostmov.php?id=${tmdbId}`;
     const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
     
-    console.log(`[Filme ${tmdbId}] Usando fallback da API RoxanoPlay via proxy.`);
     return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
 
   } catch (error) {
