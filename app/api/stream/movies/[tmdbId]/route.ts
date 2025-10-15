@@ -21,18 +21,10 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
         const docData = docSnap.data();
         if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
             const firestoreUrl = docData.urls[0].url as string;
-
             if (isDirectStreamLink(firestoreUrl)) {
-                return NextResponse.json({
-                    streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
-                    ...mediaInfo
-                });
+                return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }], ...mediaInfo });
             }
-
-            return NextResponse.json({
-                streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }],
-                ...mediaInfo
-            });
+            return NextResponse.json({ streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }], ...mediaInfo });
         }
     }
     return null;
@@ -43,7 +35,6 @@ export async function GET(
   { params }: { params: { tmdbId: string } }
 ) {
   const { tmdbId } = params;
-
   if (!tmdbId) {
     return NextResponse.json({ error: "TMDB ID é necessário." }, { status: 400 });
   }
@@ -61,42 +52,60 @@ export async function GET(
         };
       }
     } catch (tmdbError) {
-      console.warn("API de Filmes: Não foi possível buscar informações do TMDB para o filme:", tmdbId, tmdbError);
+      console.warn(`API de Filmes: Não foi possível buscar informações do TMDB para o filme: ${tmdbId}`, tmdbError);
     }
 
     const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     
-    // 1. Checa se o conteúdo deve ser forçado a usar o Firestore
     if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         console.log(`[Filme ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
-        if (firestoreResponse) {
-            return firestoreResponse;
-        }
+        if (firestoreResponse) return firestoreResponse;
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
     }
 
-    // 2. Tenta o Firestore primeiro (se existir e não for forçado) como uma alternativa prioritária se disponível
     const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
     if (firestoreResponse) {
         console.log(`[Filme ${tmdbId}] Encontrado stream no Firestore. Usando como prioridade.`);
         return firestoreResponse;
     }
 
-    // 3. Se não houver nada no Firestore, usa a API Roxano como principal, passando pelo proxy
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
-    // ✨ CORREÇÃO APLICADA AQUI ✨
-    const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
-    console.log(`[Filme ${tmdbId}] Retornando URL da API Roxano via proxy local: ${proxyUrl}`);
+    // ✨ NOVA LÓGICA CORRIGIDA AQUI ✨
+    try {
+        const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+        console.log(`[Filme ${tmdbId}] Buscando stream da API externa: ${roxanoUrl}`);
+        const roxanoRes = await fetch(roxanoUrl, { headers: { 'Referer': 'https://cineveo.lat/' }});
 
-    const stream = {
-        playerType: "custom",
-        url: proxyUrl, // Usando a URL do proxy
-        name: "Servidor Principal",
-    };
+        if (!roxanoRes.ok) {
+            throw new Error(`API Externa respondeu com status ${roxanoRes.status}`);
+        }
 
-    return NextResponse.json({ streams: [stream], ...mediaInfo });
+        const roxanoData = await roxanoRes.json();
+        // Tenta pegar a URL de 'url' ou do primeiro item de 'streams'
+        const finalStreamUrl = roxanoData.url || (Array.isArray(roxanoData.streams) && roxanoData.streams[0]?.url);
+
+        if (!finalStreamUrl || typeof finalStreamUrl !== 'string') {
+            throw new Error("A resposta da API externa não continha uma URL de stream válida.");
+        }
+        
+        console.log(`[Filme ${tmdbId}] URL final obtida: ${finalStreamUrl}`);
+
+        const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(finalStreamUrl)}`;
+        console.log(`[Filme ${tmdbId}] Retornando URL final via proxy local: ${proxyUrl}`);
+
+        const stream = {
+            playerType: "custom",
+            url: proxyUrl,
+            name: "Servidor Principal",
+        };
+
+        return NextResponse.json({ streams: [stream], ...mediaInfo });
+
+    } catch (externalApiError: any) {
+        console.error(`[Filme ${tmdbId}] Falha ao buscar stream da API externa:`, externalApiError.message);
+        return NextResponse.json({ error: "Nenhum stream disponível para este filme no momento." }, { status: 404 });
+    }
 
   } catch (error) {
     console.error(`[Filme ${tmdbId}] Erro geral ao buscar streams:`, error);

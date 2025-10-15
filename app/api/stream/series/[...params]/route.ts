@@ -25,18 +25,10 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                 const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
                 if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
                     const firestoreUrl = episodeData.urls[0].url as string;
-
                     if (isDirectStreamLink(firestoreUrl)) {
-                        return NextResponse.json({
-                            streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }],
-                            ...mediaInfo
-                        });
+                        return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Direto" }], ...mediaInfo });
                     }
-                    
-                    return NextResponse.json({
-                        streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }],
-                        ...mediaInfo
-                    });
+                    return NextResponse.json({ streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Externo" }], ...mediaInfo });
                 }
             }
         }
@@ -50,7 +42,6 @@ export async function GET(
 ) {
   const [tmdbId, season, episode] = params.params;
   const episodeNum = parseInt(episode, 10);
-
   if (!tmdbId || !season || isNaN(episodeNum)) {
     return NextResponse.json({ error: "ID, temporada e episódio são necessários." }, { status: 400 });
   }
@@ -68,7 +59,7 @@ export async function GET(
         };
       }
     } catch (tmdbError) {
-      console.warn("API de Séries: Não foi possível buscar informações do TMDB para a série:", tmdbId, tmdbError);
+      console.warn(`API de Séries: Não foi possível buscar informações do TMDB para a série: ${tmdbId}`, tmdbError);
     }
     
     const docRef = doc(firestore, "media", tmdbId);
@@ -77,32 +68,50 @@ export async function GET(
     if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         console.log(`[Série ${tmdbId}] Forçando o uso do Firestore.`);
         const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
-        if (firestoreResponse) {
-            return firestoreResponse;
-        }
+        if (firestoreResponse) return firestoreResponse;
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado para este episódio." }, { status: 404 });
     }
 
-    // Prioriza o Firestore se houver um link disponível
     const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
     if (firestoreResponse) {
         console.log(`[Série ${tmdbId}] Encontrado stream no Firestore. Usando como prioridade.`);
         return firestoreResponse;
     }
     
-    // Se não, usa a API Roxano via proxy
-    const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
-    // ✨ CORREÇÃO APLICADA AQUI ✨
-    const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(roxanoUrl)}`;
-    console.log(`[Série ${tmdbId}] Retornando URL da API Roxano via proxy local: ${proxyUrl}`);
-    
-    const stream = {
-        playerType: "custom",
-        url: proxyUrl, // Usando a URL do proxy
-        name: `Servidor Principal (T${season} E${episode})`,
-    };
-    
-    return NextResponse.json({ streams: [stream], ...mediaInfo });
+    // ✨ NOVA LÓGICA CORRIGIDA AQUI ✨
+    try {
+        const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}/${season}/${episode}`;
+        console.log(`[Série ${tmdbId}] Buscando stream da API externa: ${roxanoUrl}`);
+        const roxanoRes = await fetch(roxanoUrl, { headers: { 'Referer': 'https://cineveo.lat/' }});
+
+        if (!roxanoRes.ok) {
+            throw new Error(`API Externa respondeu com status ${roxanoRes.status}`);
+        }
+
+        const roxanoData = await roxanoRes.json();
+        const finalStreamUrl = roxanoData.url || (Array.isArray(roxanoData.streams) && roxanoData.streams[0]?.url);
+
+        if (!finalStreamUrl || typeof finalStreamUrl !== 'string') {
+            throw new Error("A resposta da API externa não continha uma URL de stream válida.");
+        }
+        
+        console.log(`[Série ${tmdbId}] URL final obtida: ${finalStreamUrl}`);
+
+        const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(finalStreamUrl)}`;
+        console.log(`[Série ${tmdbId}] Retornando URL final via proxy local: ${proxyUrl}`);
+        
+        const stream = {
+            playerType: "custom",
+            url: proxyUrl,
+            name: `Servidor Principal (T${season} E${episode})`,
+        };
+        
+        return NextResponse.json({ streams: [stream], ...mediaInfo });
+
+    } catch (externalApiError: any) {
+        console.error(`[Série ${tmdbId}] Falha ao buscar stream da API externa para S${season}E${episode}:`, externalApiError.message);
+        return NextResponse.json({ error: "Nenhum stream disponível para este episódio no momento." }, { status: 404 });
+    }
 
   } catch (error) {
     console.error(`[Série ${tmdbId}] Erro geral ao buscar streams para S${season}E${episode}:`, error);
