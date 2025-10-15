@@ -1,11 +1,11 @@
 // app/api/stream/movies/[tmdbId]/route.ts
 import { NextResponse } from "next/server";
-import { firestore } from "@/lib/firebase"; //
+import { firestore } from "@/lib/firebase";
 import { doc, getDoc, DocumentSnapshot } from "firebase/firestore";
 
-const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php"; ///route.ts]
-const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc"; ///route.ts]
-const TMDB_BASE_URL = "https://api.themoviedb.org/3"; ///route.ts]
+const ROXANO_API_URL = "https://roxanoplay.bb-bet.top/pages/hostmov.php";
+const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
+const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
 function isDirectStreamLink(url: string): boolean {
     try {
@@ -31,6 +31,16 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     return null;
 }
 
+// ✨ NOVA FUNÇÃO PARA EXTRAIR O LINK DO HTML ✨
+function extractUrlFromHtml(html: string): string | null {
+    // Tenta encontrar o link dentro de uma tag <source src="...">
+    const match = html.match(/<source.*?src=["'](.*?)["']/);
+    if (match && match[1]) {
+        return match[1];
+    }
+    return null;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { tmdbId: string } }
@@ -43,7 +53,7 @@ export async function GET(
   try {
     let mediaInfo = { title: null, originalTitle: null, backdropPath: null };
     try {
-      const tmdbRes = await fetch(`${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`); ///route.ts]
+      const tmdbRes = await fetch(`${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
       if (tmdbRes.ok) {
         const tmdbData = await tmdbRes.json();
         mediaInfo = {
@@ -56,11 +66,10 @@ export async function GET(
       console.warn(`API de Filmes: Não foi possível buscar informações do TMDB para o filme: ${tmdbId}`, tmdbError);
     }
 
-    const docRef = doc(firestore, "media", tmdbId); ///route.ts]
+    const docRef = doc(firestore, "media", tmdbId);
     const docSnap = await getDoc(docRef);
     
-    if (docSnap.exists() && docSnap.data()?.forceFirestore === true) { ///route.ts]
-        console.log(`[Filme ${tmdbId}] Forçando o uso do Firestore.`);
+    if (docSnap.exists() && docSnap.data()?.forceFirestore === true) {
         const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
         if (firestoreResponse) return firestoreResponse;
         return NextResponse.json({ error: "Stream forçado do Firestore não encontrado." }, { status: 404 });
@@ -68,13 +77,13 @@ export async function GET(
 
     const firestoreResponse = await getFirestoreStream(docSnap, mediaInfo);
     if (firestoreResponse) {
-        console.log(`[Filme ${tmdbId}] Encontrado stream no Firestore. Usando como prioridade.`);
         return firestoreResponse;
     }
-
+    
+    // LÓGICA DA API EXTERNA ATUALIZADA
     try {
-        const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`; ///route.ts]
-        console.log(`[Filme ${tmdbId}] Buscando stream da API externa: ${roxanoUrl}`);
+        const roxanoUrl = `${ROXANO_API_URL}?id=${tmdbId}`;
+        console.log(`[Filme ${tmdbId}] Buscando da API externa: ${roxanoUrl}`);
         
         const roxanoRes = await fetch(roxanoUrl, { headers: { 'Referer': 'https://google.com/' }});
 
@@ -82,36 +91,36 @@ export async function GET(
             throw new Error(`API Externa respondeu com status ${roxanoRes.status}`);
         }
 
-        const roxanoData = await roxanoRes.json();
-        console.log(`[Filme ${tmdbId}] Resposta JSON da API externa:`, JSON.stringify(roxanoData));
+        // ✨ MUDANÇA: PEGA A RESPOSTA COMO TEXTO (HTML) ✨
+        const htmlText = await roxanoRes.text();
 
-        const finalStreamUrl = roxanoData.url || (Array.isArray(roxanoData.streams) && roxanoData.streams[0]?.url);
+        // ✨ MUDANÇA: EXTRAI A URL DO HTML ✨
+        const finalStreamUrl = extractUrlFromHtml(htmlText);
 
-        if (!finalStreamUrl || typeof finalStreamUrl !== 'string') {
-            console.error(`[Filme ${tmdbId}] URL de stream não encontrada na resposta.`);
-            throw new Error("A resposta da API externa não continha uma URL de stream válida.");
+        if (!finalStreamUrl) {
+            console.error(`[Filme ${tmdbId}] Não foi possível extrair a URL do vídeo do HTML da API externa.`);
+            throw new Error("A resposta da API externa mudou e o link do vídeo não foi encontrado.");
         }
         
-        console.log(`[Filme ${tmdbId}] URL final obtida: ${finalStreamUrl}`);
+        console.log(`[Filme ${tmdbId}] URL final extraída do HTML: ${finalStreamUrl}`);
 
-        const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(finalStreamUrl)}`; ///route.ts]
-        console.log(`[Filme ${tmdbId}] Retornando URL para o proxy de redirecionamento: ${proxyUrl}`);
+        const proxyUrl = `/api/video-proxy?videoUrl=${encodeURIComponent(finalStreamUrl)}`;
 
         const stream = {
-            playerType: "custom", ///route.ts]
-            url: proxyUrl, ///route.ts]
+            playerType: "custom",
+            url: proxyUrl,
             name: "Servidor Principal",
         };
 
         return NextResponse.json({ streams: [stream], ...mediaInfo });
 
     } catch (externalApiError: any) {
-        console.error(`[Filme ${tmdbId}] Falha ao buscar stream da API externa:`, externalApiError.message);
+        console.error(`[Filme ${tmdbId}] Falha ao processar API externa:`, externalApiError.message);
         return NextResponse.json({ error: "Nenhum stream disponível para este filme no momento." }, { status: 404 });
     }
 
   } catch (error) {
-    console.error(`[Filme ${tmdbId}] Erro geral ao buscar streams:`, error);
+    console.error(`[Filme ${tmdbId}] Erro geral:`, error);
     return NextResponse.json({ error: "Falha ao buscar streams" }, { status: 500 });
   }
 }
