@@ -30,6 +30,13 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     return null;
 }
 
+// Função para extrair o link .m3u8 do HTML
+function extractM3u8Url(html: string): string | null {
+    const regex = /(https?:\/\/[^'"]+\.(?:m3u8|mp4))/i;
+    const match = html.match(regex);
+    return match ? match[0] : null;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { tmdbId: string } }
@@ -40,6 +47,9 @@ export async function GET(
   }
 
   try {
+    const { protocol, host } = new URL(request.url);
+    const baseUrl = `${protocol}//${host}`;
+
     let mediaInfo = { title: null, originalTitle: null, backdropPath: null };
     try {
         const tmdbRes = await fetch(`${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
@@ -52,7 +62,7 @@ export async function GET(
             };
         }
     } catch (tmdbError) {
-        console.warn(`API de Filmes: Não foi possível buscar informações do TMDB para o filme: ${tmdbId}`, tmdbError);
+        console.warn(`API de Filmes: Não foi possível buscar TMDB para ${tmdbId}`, tmdbError);
     }
     
     // 1. Tenta buscar no Firestore
@@ -63,14 +73,28 @@ export async function GET(
         return firestoreResponse;
     }
 
-    // 2. Se não encontrou, usa a API Roxanoplay diretamente
-    console.log(`[Filme ${tmdbId}] Nenhum stream no Firestore. Usando fallback direto da API RoxanoPlay.`);
-    const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/hostmov.php?id=${tmdbId}`;
-    
-    return NextResponse.json({ streams: [{ playerType: "custom", url: roxanoUrl, name: "Servidor Secundário" }], ...mediaInfo });
+    // 2. Se não encontrou, raspa a URL da Roxano
+    console.log(`[Filme ${tmdbId}] Raspando RoxanoPlay...`);
+    const roxanoPageUrl = `https://roxanoplay.bb-bet.top/pages/hostmov.php?id=${tmdbId}`;
+    const pageResponse = await fetch(roxanoPageUrl);
+    if (!pageResponse.ok) {
+        throw new Error("Página da Roxano não encontrada.");
+    }
+    const pageHtml = await pageResponse.text();
+    const scrapedUrl = extractM3u8Url(pageHtml);
 
-  } catch (error) {
-    console.error(`[Filme ${tmdbId}] Erro geral:`, error);
+    if (scrapedUrl) {
+        console.log(`[Filme ${tmdbId}] URL extraída: ${scrapedUrl}`);
+        // 3. Passa a URL raspada pelo nosso proxy
+        const proxyUrl = `${baseUrl}/api/video-proxy?videoUrl=${encodeURIComponent(scrapedUrl)}`;
+        return NextResponse.json({ streams: [{ playerType: "custom", url: proxyUrl, name: "Servidor Secundário" }], ...mediaInfo });
+    }
+
+    console.error(`[Filme ${tmdbId}] Não foi possível extrair o link do vídeo da página.`);
+    return NextResponse.json({ error: "Nenhum stream disponível para este filme no momento." }, { status: 404 });
+
+  } catch (error: any) {
+    console.error(`[Filme ${tmdbId}] Erro geral:`, error.message);
     return NextResponse.json({ error: "Falha ao buscar streams" }, { status: 500 });
   }
 }
