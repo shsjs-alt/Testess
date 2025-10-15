@@ -80,21 +80,17 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    // <<< INÍCIO DA CORREÇÃO PRINCIPAL DO PLAYER >>>
     useEffect(() => {
         const video = videoRef.current;
         if (!video || !src) return;
     
-        // Sempre que a fonte de vídeo mudar, destrói a instância HLS anterior se existir.
         if (hlsRef.current) {
             hlsRef.current.destroy();
             hlsRef.current = null;
         }
     
-        // Verifica se a URL é de um stream HLS (contém .m3u8).
         const isHls = src.toLowerCase().includes('.m3u8');
         
-        // Se for HLS e o navegador suportar HLS.js...
         if (isHls && Hls.isSupported()) {
             console.log("HLS.js: Anexando player para stream HLS...");
             const hls = new Hls();
@@ -124,21 +120,16 @@ export default function VideoPlayer({
                 }
             });
         } else {
-            // Se NÃO for .m3u8 (ex: .mp4, ou nosso proxy /api/video-proxy que não tem extensão)
-            // ou se o navegador já suporta HLS nativamente (como o Safari)
             console.log("Player: Anexando fonte de vídeo direta (MP4, Proxy, ou HLS Nativo).");
             video.src = src;
-            // O evento 'onCanPlay' do vídeo cuidará de dar o play.
         }
     
-        // Reseta os estados relacionados ao final do vídeo para o próximo episódio.
         setEndingTriggered(false);
         setShowNextEpisodeOverlay(false);
         if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
         }
         
-        // Função de limpeza: para o vídeo e limpa a instância HLS ao trocar de fonte.
         return () => {
             if (hlsRef.current) {
                 hlsRef.current.destroy();
@@ -150,7 +141,6 @@ export default function VideoPlayer({
             }
         };
     }, [src, isIphone, showContinueWatching]);
-    // <<< FIM DA CORREÇÃO PRINCIPAL DO PLAYER >>>
 
 
   useEffect(() => {
@@ -671,8 +661,9 @@ export default function VideoPlayer({
           className="absolute inset-0 z-0"
           onClick={handleMainClick}
         />
-
-        {(isLoading || isBuffering) && (
+        
+        {/* ✨ MUDANÇA AQUI: O loading principal foi removido, agora só mostra durante o buffering. ✨ */}
+        {isBuffering && !isLoading && (
           <div 
             style={{ transform: 'translateZ(0)' }} 
             className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/50"
