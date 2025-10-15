@@ -6,6 +6,7 @@ import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import VideoPlayer from '@/components/video-player';
+import { PlayerOverlay } from '@/components/player-overley'; // Importado
 
 type StreamInfo = {
   streams: { url: string; playerType: string }[];
@@ -18,10 +19,10 @@ export default function MovieEmbedPage() {
   const params = useParams();
   const tmdbId = params.tmdbId as string;
   
-  const [stream, setStream] = useState<{ url: string; playerType: string } | null>(null);
+  const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mediaTitle, setMediaTitle] = useState('Filme');
+  const [userInteracted, setUserInteracted] = useState(false); // Novo estado
 
   useEffect(() => {
     if (!tmdbId) {
@@ -40,11 +41,8 @@ export default function MovieEmbedPage() {
         }
         
         const data: StreamInfo = await res.json();
-        const firstStream = data.streams?.[0];
-
-        if (firstStream && firstStream.url) {
-          setStream(firstStream);
-          setMediaTitle(data.title || "Filme");
+        if (data.streams && data.streams.length > 0 && data.streams[0].url) {
+          setStreamInfo(data);
         } else {
           setError("Nenhum link de streaming disponível para este filme.");
         }
@@ -57,6 +55,10 @@ export default function MovieEmbedPage() {
 
     fetchMovieData();
   }, [tmdbId]);
+
+  const handlePlay = () => {
+    setUserInteracted(true);
+  };
 
   if (loading) {
     return (
@@ -76,35 +78,47 @@ export default function MovieEmbedPage() {
     );
   }
 
-  if (stream) {
-    if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
-      return (
-        <main className="w-screen h-screen relative bg-black">
-          <iframe
-            src={stream.url}
-            className="w-full h-full border-0"
-            allow="autoplay; fullscreen"
-            allowFullScreen
-          ></iframe>
-          {stream.playerType === 'gdrive' && (
-             <div className="absolute top-0 right-0 w-16 h-14 bg-black z-10"></div>
-          )}
-        </main>
-      );
-    }
-    
+  if (!streamInfo) return null;
+
+  // Se o usuário ainda não interagiu, mostra a camada de overlay
+  if (!userInteracted) {
     return (
-      <main className="w-screen h-screen relative bg-black">
-        <VideoPlayer
-          src={stream.url}
-          title={mediaTitle}
-          downloadUrl={`https://primevicio.vercel.app/download/movie/${tmdbId}`}
-          rememberPosition={true}
-          rememberPositionKey={`movie-${tmdbId}`}
-        />
-      </main>
+        <main className="w-screen h-screen relative bg-black">
+            <PlayerOverlay
+                title={streamInfo.title || 'Filme'}
+                originalTitle={streamInfo.originalTitle || ''}
+                backgroundUrl={streamInfo.backdropPath}
+                isLoading={false}
+                onPlay={handlePlay}
+            />
+        </main>
     );
   }
 
-  return null;
+  // Se o usuário já interagiu, carrega o player de vídeo
+  const stream = streamInfo.streams[0];
+  if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
+    return (
+      <main className="w-screen h-screen relative bg-black">
+        <iframe
+          src={stream.url}
+          className="w-full h-full border-0"
+          allow="autoplay; fullscreen"
+          allowFullScreen
+        ></iframe>
+      </main>
+    );
+  }
+  
+  return (
+    <main className="w-screen h-screen relative bg-black">
+      <VideoPlayer
+        src={stream.url}
+        title={streamInfo.title || 'Filme'}
+        downloadUrl={`https://primevicio.vercel.app/download/movie/${tmdbId}`}
+        rememberPosition={true}
+        rememberPositionKey={`movie-${tmdbId}`}
+      />
+    </main>
+  );
 }
