@@ -1,40 +1,8 @@
 // app/api/stream/series/[...params]/route.ts
 import { NextResponse } from "next/server";
-import { firestore } from "@/lib/firebase";
-import { doc, getDoc, DocumentSnapshot } from "firebase/firestore";
 
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
-
-function isDirectStreamLink(url: string): boolean {
-    try {
-        const path = new URL(url).pathname.toLowerCase().split('?')[0];
-        return path.endsWith('.mp4') || path.endsWith('.m3u8');
-    } catch (error) {
-        return false;
-    }
-}
-
-async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
-    if (docSnap.exists()) {
-        const docData = docSnap.data();
-        if (docData) {
-            const seasonData = docData.seasons?.[season];
-            if (seasonData && Array.isArray(seasonData.episodes)) {
-                const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
-                if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
-                    const firestoreUrl = episodeData.urls[0].url as string;
-                    console.log(`[Série ${docSnap.id}] Encontrado stream no Firestore: ${firestoreUrl}`);
-                    if (isDirectStreamLink(firestoreUrl)) {
-                        return NextResponse.json({ streams: [{ playerType: "custom", url: firestoreUrl, name: "Servidor Firestore" }], ...mediaInfo });
-                    }
-                    return NextResponse.json({ streams: [{ playerType: "iframe", url: firestoreUrl, name: "Servidor Firestore" }], ...mediaInfo });
-                }
-            }
-        }
-    }
-    return null;
-}
 
 export async function GET(
   request: Request,
@@ -42,11 +10,13 @@ export async function GET(
 ) {
   const [tmdbId, season, episode] = params.params;
   const episodeNum = parseInt(episode, 10);
+
   if (!tmdbId || !season || isNaN(episodeNum)) {
-    return NextResponse.json({ error: "ID, temporada e episódio são necessários." }, { status: 400 });
+    return NextResponse.json({ error: "ID da série, temporada e episódio são necessários." }, { status: 400 });
   }
 
   try {
+    // Busca informações da série no TMDB para o overlay
     let mediaInfo = { title: null, originalTitle: null, backdropPath: null };
     try {
       const tmdbRes = await fetch(`${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
@@ -59,21 +29,25 @@ export async function GET(
         };
       }
     } catch (tmdbError) {
-      console.warn(`API de Séries: Não foi possível buscar informações do TMDB para a série: ${tmdbId}`, tmdbError);
+      console.warn(`[API de Séries] Não foi possível buscar TMDB para ${tmdbId}`, tmdbError);
     }
     
-    const docRef = doc(firestore, "media", tmdbId);
-    const docSnap = await getDoc(docRef);
-    
-    const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
-    if (firestoreResponse) {
-        return firestoreResponse;
-    }
-    
-    return NextResponse.json({ error: "Nenhum stream disponível para este episódio no momento." }, { status: 404 });
+    // Monta a URL direta da Roxano para o episódio da série
+    const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
+    console.log(`[API de Séries] Montada URL da Roxano para S${season}E${episode}: ${roxanoUrl}`);
 
-  } catch (error) {
-    console.error(`[Série ${tmdbId}] Erro geral para S${season}E${episode}:`, error);
-    return NextResponse.json({ error: "Falha ao buscar streams" }, { status: 500 });
+    // Retorna a URL para ser usada no player personalizado
+    return NextResponse.json({ 
+        streams: [{ 
+            playerType: "custom", 
+            url: roxanoUrl, 
+            name: "Servidor Principal" 
+        }], 
+        ...mediaInfo 
+    });
+
+  } catch (error: any) {
+    console.error(`[Série ${tmdbId}] Erro geral para S${season}E${episode}:`, error.message);
+    return NextResponse.json({ error: "Falha ao processar a requisição da série" }, { status: 500 });
   }
 }
