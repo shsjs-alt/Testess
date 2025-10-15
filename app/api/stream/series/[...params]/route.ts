@@ -1,8 +1,44 @@
 // app/api/stream/series/[...params]/route.ts
 import { NextResponse } from "next/server";
+import { firestore } from "@/lib/firebase";
+import { doc, getDoc, DocumentSnapshot } from "firebase/firestore";
 
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+
+// Função auxiliar para verificar se é um link de stream direto
+function isDirectStreamLink(url: string): boolean {
+    try {
+        const path = new URL(url).pathname.toLowerCase().split('?')[0];
+        return path.endsWith('.mp4') || path.endsWith('.m3u8');
+    } catch (error) {
+        return false;
+    }
+}
+
+// Função para buscar o stream do Firestore para séries
+async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
+    if (docSnap.exists()) {
+        const docData = docSnap.data();
+        if (docData) {
+            const seasonData = docData.seasons?.[season];
+            if (seasonData && Array.isArray(seasonData.episodes)) {
+                const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
+                if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
+                    const firestoreUrl = episodeData.urls[0].url as string;
+                    console.log(`[Série ${docSnap.id}] Encontrado stream no Firestore: ${firestoreUrl}`);
+                    const playerType = isDirectStreamLink(firestoreUrl) ? "custom" : "iframe";
+                    return NextResponse.json({ 
+                        streams: [{ playerType, url: firestoreUrl, name: "Servidor Principal" }], 
+                        ...mediaInfo 
+                    });
+                }
+            }
+        }
+    }
+    return null; // Retorna nulo se não encontrar
+}
+
 
 export async function GET(
   request: Request,
@@ -32,16 +68,25 @@ export async function GET(
       console.warn(`[API de Séries] Não foi possível buscar TMDB para ${tmdbId}`, tmdbError);
     }
     
-    // Monta a URL direta da Roxano para o episódio da série
-    const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
-    console.log(`[API de Séries] Montada URL da Roxano para S${season}E${episode}: ${roxanoUrl}`);
+    // 1. Tenta buscar no Firestore PRIMEIRO
+    const docRef = doc(firestore, "media", tmdbId);
+    const docSnap = await getDoc(docRef);
+    const firestoreResponse = await getFirestoreStream(docSnap, season, episodeNum, mediaInfo);
 
-    // Retorna a URL para ser usada no player personalizado
+    if (firestoreResponse) {
+        return firestoreResponse; // Se encontrou, retorna a resposta do Firestore
+    }
+
+    // 2. Se NÃO encontrou, usa a API da Roxano como fallback
+    console.log(`[API de Séries] Nenhum stream no Firestore. Usando fallback da Roxano para S${season}E${episode}`);
+    const roxanoUrl = `https://roxanoplay.bb-bet.top/pages/proxys.php?id=${tmdbId}/${season}/${episode}`;
+
+    // Retorna a URL da Roxano para ser usada no player personalizado
     return NextResponse.json({ 
         streams: [{ 
             playerType: "custom", 
             url: roxanoUrl, 
-            name: "Servidor Principal" 
+            name: "Servidor Secundário" 
         }], 
         ...mediaInfo 
     });

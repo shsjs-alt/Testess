@@ -6,7 +6,7 @@ import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import VideoPlayer from '@/components/video-player';
-import { PlayerOverlay } from '@/components/player-overley'; // Importado
+import { PlayerOverlay } from '@/components/player-overley';
 
 type StreamInfo = {
   streams: { url: string; playerType: string }[];
@@ -22,7 +22,8 @@ export default function MovieEmbedPage() {
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userInteracted, setUserInteracted] = useState(false); // Novo estado
+  // AQUI ESTÁ A MUDANÇA: O player agora carrega direto
+  const [userInteracted, setUserInteracted] = useState(true);
 
   useEffect(() => {
     if (!tmdbId) {
@@ -80,7 +81,7 @@ export default function MovieEmbedPage() {
 
   if (!streamInfo) return null;
 
-  // Se o usuário ainda não interagiu, mostra a camada de overlay
+  // A lógica antiga que mostrava o overlay foi efetivamente pulada
   if (!userInteracted) {
     return (
         <main className="w-screen h-screen relative bg-black">
@@ -95,7 +96,7 @@ export default function MovieEmbedPage() {
     );
   }
 
-  // Se o usuário já interagiu, carrega o player de vídeo
+  // Carrega o player de vídeo diretamente
   const stream = streamInfo.streams[0];
   if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
     return (
