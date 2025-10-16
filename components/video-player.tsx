@@ -662,13 +662,13 @@ export default function VideoPlayer({
           onClick={handleMainClick}
         />
         
-        {/* ✨ MUDANÇA AQUI: O loading principal foi removido, agora só mostra durante o buffering. ✨ */}
-        {isBuffering && !isLoading && (
+        {/* MODIFICAÇÃO: Mostra o spinner no loading inicial E no buffering, remove a sombra escura e muda a cor. */}
+        {(isLoading || isBuffering) && (
           <div 
             style={{ transform: 'translateZ(0)' }} 
-            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/50"
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
           >
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-red-600/50 border-t-red-600" />
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-white" />
           </div>
         )}
 
