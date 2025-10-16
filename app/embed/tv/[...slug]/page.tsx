@@ -37,7 +37,6 @@ export default function TvEmbedPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
-  // AQUI ESTÁ A MUDANÇA: O player agora carrega direto
   const [userInteracted, setUserInteracted] = useState(true);
 
   useEffect(() => {
@@ -119,7 +118,6 @@ export default function TvEmbedPage() {
 
   const mediaTitle = `${streamInfo.title || 'Série'} - T${season} E${episode}`;
 
-  // A lógica antiga que mostrava o overlay foi efetivamente pulada
   if (!userInteracted) {
     return (
         <main className="w-screen h-screen relative bg-black">
@@ -134,7 +132,6 @@ export default function TvEmbedPage() {
     );
   }
 
-  // Carrega o player de vídeo diretamente
   const stream = streamInfo.streams[0];
   if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
     return (
@@ -154,7 +151,7 @@ export default function TvEmbedPage() {
       <VideoPlayer
         src={stream.url}
         title={mediaTitle}
-        downloadUrl={`https://primevicio.vercel.app/download/tv/${tmdbId}/${season}/${episode}`}
+        downloadUrl={`https://primevicio.lat/download/tv/${tmdbId}/${season}/${episode}`}
         rememberPosition={true}
         rememberPositionKey={`tv-${tmdbId}-s${season}-e${episode}`}
         hasNextEpisode={hasNextEpisode}

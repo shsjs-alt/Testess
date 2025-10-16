@@ -32,20 +32,20 @@ function ApiDocsSection({ stats }: { stats: Stats }) {
                 
                 <h4 className="font-semibold text-white mt-6 mb-2">Para Filmes:</h4>
                 <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
-                    {`https://primevicio.vercel.app/embed/movie/{ID_DO_FILME}`}
+                    {`https://primevicio.lat/embed/movie/{ID_DO_FILME}`}
                 </code>
                  <p className="text-sm text-zinc-500 mt-2">Exemplo de iframe:</p>
                 <code className="block w-full text-left bg-zinc-800 text-sky-300 p-4 rounded-md mt-3 text-sm overflow-x-auto">
-                    {`<iframe src="https://primevicio.vercel.app/embed/movie/693134" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
+                    {`<iframe src="https://primevicio.lat/embed/movie/693134" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
                 </code>
 
                 <h4 className="font-semibold text-white mt-6 mb-2">Para Séries:</h4>
                 <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
-                    {`https://primevicio.vercel.app/embed/tv/{ID_DA_SERIE}/{TEMPORADA}/{EPISODIO}`}
+                    {`https://primevicio.lat/embed/tv/{ID_DA_SERIE}/{TEMPORADA}/{EPISODIO}`}
                 </code>
                  <p className="text-sm text-zinc-500 mt-2">Exemplo de iframe (Fallout, T1E1):</p>
                 <code className="block w-full text-left bg-zinc-800 text-sky-300 p-4 rounded-md mt-3 text-sm overflow-x-auto">
-                    {`<iframe src="https://primevicio.vercel.app/embed/tv/106379/1/1" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
+                    {`<iframe src="https://primevicio.lat/embed/tv/106379/1/1" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>`}
                 </code>
             </div>
 
@@ -60,14 +60,14 @@ function ApiDocsSection({ stats }: { stats: Stats }) {
 
                 <h4 className="font-semibold text-white mt-6 mb-2">Verificar Filme:</h4>
                 <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
-                    {`https://primevicio.vercel.app/api/stream/movies/{ID_DO_FILME}`}
+                    {`https://primevicio.lat/api/stream/movies/{ID_DO_FILME}`}
                 </code>
                 <p className="text-sm text-zinc-500 mt-2">Ex: <code className="bg-zinc-700 px-1 rounded">/api/stream/movies/693134</code></p>
 
 
                 <h4 className="font-semibold text-white mt-6 mb-2">Verificar Episódio de Série:</h4>
                 <code className="block w-full text-left bg-zinc-800 text-yellow-300 p-3 rounded-md text-sm overflow-x-auto">
-                    {`https://primevicio.vercel.app/api/stream/series/{ID_DA_SERIE}/{TEMPORADA}/{EPISODIO}`}
+                    {`https://primevicio.lat/api/stream/series/{ID_DA_SERIE}/{TEMPORADA}/{EPISODIO}`}
                 </code>
                  <p className="text-sm text-zinc-500 mt-2">Ex: <code className="bg-zinc-700 px-1 rounded">/api/stream/series/106379/1/1</code></p>
                 
@@ -77,15 +77,15 @@ function ApiDocsSection({ stats }: { stats: Stats }) {
                  </p>
                 <code className="block w-full text-left bg-zinc-800 text-sky-300 p-4 rounded-md mt-3 text-sm overflow-x-auto whitespace-pre-wrap">
 {`async function checarDisponibilidade(tmdbId) {
-  const url = \`https://primevicio.vercel.app/api/stream/movies/\${tmdbId}\`;
+  const url = \`https://primevicio.lat/api/stream/movies/\${tmdbId}\`;
   try {
     const resposta = await fetch(url);
     if (resposta.ok) {
       console.log('Filme disponível!');
-      // Aqui vocÃª mostra o botÃ£o de assistir no seu site
+      // Aqui você mostra o botão de assistir no seu site
       return true;
     } else {
-      console.log('Filme nÃ£o disponÃ­vel.');
+      console.log('Filme não disponível.');
       return false;
     }
   } catch (erro) {
@@ -97,7 +97,7 @@ function ApiDocsSection({ stats }: { stats: Stats }) {
 // Como usar:
 checarDisponibilidade('693134').then(disponivel => {
   if (disponivel) {
-    // LÃ³gica para exibir o player
+    // Lógica para exibir o player
   }
 });`}
                 </code>

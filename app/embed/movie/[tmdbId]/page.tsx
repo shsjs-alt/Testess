@@ -22,7 +22,6 @@ export default function MovieEmbedPage() {
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // AQUI ESTÁ A MUDANÇA: O player agora carrega direto
   const [userInteracted, setUserInteracted] = useState(true);
 
   useEffect(() => {
@@ -81,7 +80,6 @@ export default function MovieEmbedPage() {
 
   if (!streamInfo) return null;
 
-  // A lógica antiga que mostrava o overlay foi efetivamente pulada
   if (!userInteracted) {
     return (
         <main className="w-screen h-screen relative bg-black">
@@ -96,7 +94,6 @@ export default function MovieEmbedPage() {
     );
   }
 
-  // Carrega o player de vídeo diretamente
   const stream = streamInfo.streams[0];
   if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
     return (
@@ -116,7 +113,7 @@ export default function MovieEmbedPage() {
       <VideoPlayer
         src={stream.url}
         title={streamInfo.title || 'Filme'}
-        downloadUrl={`https://primevicio.vercel.app/download/movie/${tmdbId}`}
+        downloadUrl={`https://primevicio.lat/download/movie/${tmdbId}`}
         rememberPosition={true}
         rememberPositionKey={`movie-${tmdbId}`}
       />
