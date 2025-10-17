@@ -8,14 +8,8 @@ import React, { useEffect, useState } from 'react';
 import VideoPlayer from '@/components/video-player';
 import { PlayerOverlay } from '@/components/player-overley';
 
-type Stream = {
-  quality: string;
-  url: string;
-  thumbnailUrl?: string | null;
-};
-
 type StreamInfo = {
-  streams: Stream[];
+  streams: { url: string; playerType: string }[];
   title: string | null;
   originalTitle: string | null;
   backdropPath: string | null;
@@ -43,7 +37,7 @@ export default function MovieEmbedPage() {
       try {
         const res = await fetch(`/api/stream/movies/${tmdbId}`);
         if (!res.ok) {
-          throw new Error("Não foi possível obter os links de streaming.");
+          throw new Error("Não foi possível obter o link de streaming.");
         }
         
         const data: StreamInfo = await res.json();
@@ -100,13 +94,12 @@ export default function MovieEmbedPage() {
     );
   }
 
-  // Lógica para renderizar iframe caso o player não seja o customizado
-  const firstStream = streamInfo.streams[0];
-  if (firstStream && (firstStream.url.includes('gdrive') || !firstStream.url.endsWith('.m3u8') && !firstStream.url.endsWith('.mp4'))) {
+  const stream = streamInfo.streams[0];
+  if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
     return (
       <main className="w-screen h-screen relative bg-black">
         <iframe
-          src={firstStream.url}
+          src={stream.url}
           className="w-full h-full border-0"
           allow="autoplay; fullscreen"
           allowFullScreen
@@ -118,7 +111,7 @@ export default function MovieEmbedPage() {
   return (
     <main className="w-screen h-screen relative bg-black">
       <VideoPlayer
-        streams={streamInfo.streams}
+        src={stream.url}
         title={streamInfo.title || 'Filme'}
         downloadUrl={`https://primevicio.lat/download/movie/${tmdbId}`}
         rememberPosition={true}

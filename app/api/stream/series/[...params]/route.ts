@@ -6,6 +6,16 @@ import { doc, getDoc, DocumentSnapshot } from "firebase/firestore";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
+// Função auxiliar para verificar se é um link de stream direto
+function isDirectStreamLink(url: string): boolean {
+    try {
+        const path = new URL(url).pathname.toLowerCase().split('?')[0];
+        return path.endsWith('.mp4') || path.endsWith('.m3u8');
+    } catch (error) {
+        return false;
+    }
+}
+
 // Função para buscar o stream do Firestore para séries
 async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, episodeNum: number, mediaInfo: any) {
     if (docSnap.exists()) {
@@ -14,17 +24,12 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
             const seasonData = docData.seasons?.[season];
             if (seasonData && Array.isArray(seasonData.episodes)) {
                 const episodeData = seasonData.episodes.find((ep: any) => ep.episode_number === episodeNum);
-                if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0) {
-                    console.log(`[Série ${docSnap.id}] Encontrado stream no Firestore`);
-                    
-                    const streams = episodeData.urls.map((stream: any) => ({
-                        quality: stream.quality || 'FULL',
-                        url: stream.url,
-                        thumbnailUrl: stream.thumbnailUrl || null
-                    }));
-
+                if (episodeData && Array.isArray(episodeData.urls) && episodeData.urls.length > 0 && episodeData.urls[0].url) {
+                    const firestoreUrl = episodeData.urls[0].url as string;
+                    console.log(`[Série ${docSnap.id}] Encontrado stream no Firestore: ${firestoreUrl}`);
+                    const playerType = isDirectStreamLink(firestoreUrl) ? "custom" : "iframe";
                     return NextResponse.json({ 
-                        streams, 
+                        streams: [{ playerType, url: firestoreUrl, name: "Servidor Principal" }], 
                         ...mediaInfo 
                     });
                 }
@@ -79,9 +84,9 @@ export async function GET(
     // Retorna a URL da Roxano para ser usada no player personalizado
     return NextResponse.json({ 
         streams: [{ 
-            quality: "FULL", 
+            playerType: "custom", 
             url: roxanoUrl, 
-            thumbnailUrl: null
+            name: "Servidor Secundário" 
         }], 
         ...mediaInfo 
     });

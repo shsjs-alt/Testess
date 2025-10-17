@@ -13,14 +13,8 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
-type Stream = {
-  quality: string;
-  url: string;
-  thumbnailUrl?: string | null;
-};
-
 type VideoPlayerProps = {
-  streams: Stream[]
+  src: string
   title: string
   downloadUrl?: string
   onClose?: () => void
@@ -31,7 +25,7 @@ type VideoPlayerProps = {
 }
 
 export default function VideoPlayer({
-  streams,
+  src,
   title,
   downloadUrl,
   onClose,
@@ -41,14 +35,12 @@ export default function VideoPlayer({
   onNextEpisode,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
-  const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
 
   const isIphone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent);
 
-  const [currentStream, setCurrentStream] = useState<Stream>(streams[0]);
   const [isPlaying, setIsPlaying] = useState(!isIphone);
   const [showControls, setShowControls] = useState(true)
 
@@ -77,7 +69,7 @@ export default function VideoPlayer({
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
-  const positionKey = `video-pos:${rememberPositionKey || streams[0]?.url}`
+  const positionKey = `video-pos:${rememberPositionKey || src}`
   
   const hlsRef = useRef<Hls | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -90,21 +82,21 @@ export default function VideoPlayer({
 
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !currentStream?.url) return;
+        if (!video || !src) return;
     
         if (hlsRef.current) {
             hlsRef.current.destroy();
             hlsRef.current = null;
         }
     
-        const isHls = currentStream.url.toLowerCase().includes('.m3u8');
+        const isHls = src.toLowerCase().includes('.m3u8');
         
         if (isHls && Hls.isSupported()) {
             console.log("HLS.js: Anexando player para stream HLS...");
             const hls = new Hls();
             hlsRef.current = hls;
             
-            hls.loadSource(currentStream.url);
+            hls.loadSource(src);
             hls.attachMedia(video);
     
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -129,7 +121,7 @@ export default function VideoPlayer({
             });
         } else {
             console.log("Player: Anexando fonte de vídeo direta (MP4, Proxy, ou HLS Nativo).");
-            video.src = currentStream.url;
+            video.src = src;
         }
     
         setEndingTriggered(false);
@@ -148,7 +140,7 @@ export default function VideoPlayer({
                 video.load();
             }
         };
-    }, [currentStream.url, isIphone, showContinueWatching]);
+    }, [src, isIphone, showContinueWatching]);
 
 
   useEffect(() => {
@@ -434,13 +426,6 @@ export default function VideoPlayer({
     setPlaybackRate(rate)
   }
 
-  const changeQuality = (stream: Stream) => {
-    if (!videoRef.current) return;
-    const currentTime = videoRef.current.currentTime;
-    setCurrentStream(stream);
-    videoRef.current.currentTime = currentTime;
-  };
-
   const toggleAutoplay = () => {
     setIsAutoplayEnabled(prev => {
       const newState = !prev;
@@ -493,7 +478,7 @@ export default function VideoPlayer({
     setIsLoading(true);
     const video = videoRef.current;
     if (video) {
-        const currentSrc = currentStream.url;
+        const currentSrc = src;
         video.src = ''; 
         video.load();
         setTimeout(() => {
@@ -572,12 +557,11 @@ export default function VideoPlayer({
   }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying]);
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!duration || !progressWrapRef.current || !thumbnailVideoRef.current) return;
+    if (!duration || !progressWrapRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
-    thumbnailVideoRef.current.currentTime = time;
   };
 
   const onProgressLeave = () => {
@@ -678,6 +662,7 @@ export default function VideoPlayer({
           onClick={handleMainClick}
         />
         
+        {/* MODIFICAÇÃO: Mostra o spinner no loading inicial E no buffering, remove a sombra escura e muda a cor. */}
         {(isLoading || isBuffering) && (
           <div 
             style={{ transform: 'translateZ(0)' }} 
@@ -825,21 +810,12 @@ export default function VideoPlayer({
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
              <div
-              className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white"
+              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
               style={{
                 left: hoverLeft,
                 visibility: hoverTime !== null ? 'visible' : 'hidden',
               }}
             >
-                {currentStream.thumbnailUrl && (
-                  <video
-                    ref={thumbnailVideoRef}
-                    src={currentStream.thumbnailUrl}
-                    className="h-24 w-40"
-                    preload="metadata"
-                    muted
-                  />
-                )}
                 {formatTime(hoverTime ?? 0)}
             </div>
             
@@ -950,19 +926,6 @@ export default function VideoPlayer({
                       </div>
                     </>
                   )}
-                  <div className="my-2 px-1 text-xs font-semibold text-white/80">Qualidade</div>
-                  <div className="flex flex-col gap-1">
-                    {streams.map((stream) => (
-                      <Button
-                        key={stream.quality}
-                        variant={currentStream.quality === stream.quality ? "secondary" : "ghost"}
-                        className="h-8 w-full justify-start"
-                        onClick={() => changeQuality(stream)}
-                      >
-                        {stream.quality}
-                      </Button>
-                    ))}
-                  </div>
                   <div className="my-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
                   <div className="flex flex-col gap-1">
                     {playbackRates.map((r) => (
