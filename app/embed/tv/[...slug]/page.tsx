@@ -9,8 +9,9 @@ import VideoPlayer from '@/components/video-player';
 import { PlayerOverlay } from '@/components/player-overley';
 
 type Stream = {
+  quality: string;
   url: string;
-  playerType: string;
+  thumbnailUrl?: string | null;
 };
 
 type StreamInfo = {
@@ -131,13 +132,14 @@ export default function TvEmbedPage() {
         </main>
     );
   }
-
-  const stream = streamInfo.streams[0];
-  if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
+  
+  // Lógica para renderizar iframe caso o player não seja o customizado
+  const firstStream = streamInfo.streams[0];
+  if (firstStream && (firstStream.url.includes('gdrive') || !firstStream.url.endsWith('.m3u8') && !firstStream.url.endsWith('.mp4'))) {
     return (
       <main className="w-screen h-screen relative bg-black">
         <iframe
-          src={stream.url}
+          src={firstStream.url}
           className="w-full h-full border-0"
           allow="autoplay; fullscreen"
           allowFullScreen
@@ -149,7 +151,7 @@ export default function TvEmbedPage() {
   return (
     <main className="w-screen h-screen relative bg-black">
       <VideoPlayer
-        src={stream.url}
+        streams={streamInfo.streams}
         title={mediaTitle}
         downloadUrl={`https://primevicio.lat/download/tv/${tmdbId}/${season}/${episode}`}
         rememberPosition={true}
