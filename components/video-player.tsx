@@ -49,7 +49,7 @@ export default function VideoPlayer({
   const isIphone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent);
 
   const [currentSource, setCurrentSource] = useState(sources[0]);
-  const [isPlaying, setIsPlaying] = useState(false); // Inicia como false, PlayerOverlay vai iniciar o play
+  const [isPlaying, setIsPlaying] = useState(!isIphone);
   const [showControls, setShowControls] = useState(true)
 
   const [currentTime, setCurrentTime] = useState(0)
@@ -90,8 +90,7 @@ export default function VideoPlayer({
   const originalRateRef = useRef<number>(1)
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>();
-
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -120,8 +119,12 @@ export default function VideoPlayer({
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 console.log("HLS.js: Manifesto carregado.");
                 video.currentTime = savedTime; 
-                // O autoplay será tratado pelo userInteracted no componente pai e depois aqui.
-                // Não inicia o play automaticamente aqui para evitar problemas de autoplay bloqueado.
+                if (!isIphone && !showContinueWatching) {
+                    video.play().catch(() => {
+                        console.warn("Autoplay foi impedido pelo navegador.");
+                        setIsPlaying(false);
+                    });
+                }
             });
     
             hls.on(Hls.Events.ERROR, (event, data) => {
@@ -265,11 +268,19 @@ export default function VideoPlayer({
     setIsLoading(false)
     setIsBuffering(false)
     const v = videoRef.current;
-    if (v && !showContinueWatching && !isIphone) { // Adicionado !isIphone aqui também
-      v.play().catch(err => {
-        console.warn("Autoplay foi impedido pelo navegador.", err)
-        setIsPlaying(false);
-      });
+    if (v) {
+        if (showContinueWatching && rememberPosition) {
+            const savedPos = localStorage.getItem(positionKey)
+            const n = Number.parseFloat(savedPos || '0');
+            if (!Number.isNaN(n) && n > 5) {
+                v.currentTime = n;
+            }
+        } else if (isPlaying) {
+            v.play().catch(err => {
+                console.warn("Autoplay foi impedido:", err)
+                setIsPlaying(false);
+            });
+        }
     }
   }
   const handleError = () => {
@@ -690,7 +701,7 @@ export default function VideoPlayer({
           onEnded={handleEnded}
           preload="metadata"
           playsInline
-          // autoPlay foi removido daqui e é ativado pelo PlayerOverlay
+          autoPlay={!isIphone}
         />
          {currentSource.thumbnailUrl && (
           <video
@@ -739,7 +750,20 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Removido o botão de play central aqui para ser controlado pelo PlayerOverlay */}
+        {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
+          <button
+            style={{ transform: 'translateZ(0)' }}
+            aria-label="Play"
+            onClick={togglePlay}
+            className={cn(
+              "absolute z-10 inset-0 m-auto h-16 w-16 rounded-full",
+              "bg-zinc-800/80 text-white",
+              "flex items-center justify-center hover:bg-zinc-700/80 transition-colors",
+            )}
+          >
+            <Play className="h-7 w-7" />
+          </button>
+        )}
 
         {showContinueWatching && (
           <div

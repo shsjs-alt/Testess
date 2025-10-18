@@ -6,7 +6,7 @@ import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import VideoPlayer from '@/components/video-player';
-import { PlayerOverlay } from '@/components/player-overley'; // Importe o novo componente
+import { PlayerOverlay } from '@/components/player-overley';
 
 type Stream = {
   url: string;
@@ -29,7 +29,6 @@ export default function MovieEmbedPage() {
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userInteracted, setUserInteracted] = useState(false); // Novo estado para controlar a interação do usuário
 
   useEffect(() => {
     if (!tmdbId) {
@@ -63,10 +62,6 @@ export default function MovieEmbedPage() {
     fetchMovieData();
   }, [tmdbId]);
 
-  const handlePlay = () => {
-    setUserInteracted(true); // Define que o usuário interagiu para iniciar o player
-  };
-
   if (loading) {
     return (
       <main className="w-screen h-screen flex items-center justify-center bg-black">
@@ -87,21 +82,6 @@ export default function MovieEmbedPage() {
 
   if (!streamInfo) return null;
 
-  // Se o usuário ainda não interagiu, mostra a tela de pré-visualização
-  if (!userInteracted) {
-    return (
-        <main className="w-screen h-screen relative bg-black">
-            <PlayerOverlay
-                title={streamInfo.title || 'Filme'}
-                originalTitle={streamInfo.originalTitle || ''}
-                backgroundUrl={streamInfo.backdropPath}
-                isLoading={false}
-                onPlay={handlePlay}
-            />
-        </main>
-    );
-  }
-
   const customStreams = streamInfo.streams.filter(s => s.playerType === 'custom');
 
   if (customStreams.length > 0) {
@@ -118,7 +98,6 @@ export default function MovieEmbedPage() {
     );
   }
   
-  // Fallback para iframe se não houver streams customizados
   const iframeStream = streamInfo.streams.find(s => s.playerType === 'iframe');
   if (iframeStream) {
     return (

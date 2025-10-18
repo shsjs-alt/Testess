@@ -6,7 +6,6 @@ import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import VideoPlayer from '@/components/video-player';
-import { PlayerOverlay } from '@/components/player-overley'; // Importe o novo componente
 
 type Stream = {
   url: string;
@@ -24,15 +23,9 @@ type StreamInfo = {
 
 type SeasonInfo = {
     episode_count: number;
-    episodes: Episode[];
 }
 
-type Episode = {
-  still_path: string | null;
-  episode_number: number; // Adicionado para facilitar a busca do episódio correto
-}
-
-const API_KEY = "860b66ade580bacae581f4228fad49fc"; // Sua chave da API TMDB
+const API_KEY = "860b66ade580bacae581f4228fad49fc";
 const API_BASE_URL = "https://api.themoviedb.org/3";
 
 export default function TvEmbedPage() {
@@ -45,7 +38,6 @@ export default function TvEmbedPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
-  const [userInteracted, setUserInteracted] = useState(false); // Novo estado para controlar a interação do usuário
 
   useEffect(() => {
     if (!tmdbId || !season || !episode) {
@@ -91,10 +83,6 @@ export default function TvEmbedPage() {
     fetchAllData();
   }, [tmdbId, season, episode]);
 
-  const handlePlay = () => {
-    setUserInteracted(true); // Define que o usuário interagiu para iniciar o player
-  };
-
   const hasNextEpisode = seasonInfo ? parseInt(episode, 10) < seasonInfo.episode_count : false;
 
   const playNextEpisode = () => {
@@ -125,23 +113,6 @@ export default function TvEmbedPage() {
   if (!streamInfo) return null;
 
   const mediaTitle = `${streamInfo.title || 'Série'} - T${season} E${episode}`;
-  const episodeData = seasonInfo?.episodes?.find(e => e.episode_number === parseInt(episode, 10));
-
-  // Se o usuário ainda não interagiu, mostra a tela de pré-visualização
-  if (!userInteracted) {
-    return (
-        <main className="w-screen h-screen relative bg-black">
-            <PlayerOverlay
-                title={mediaTitle}
-                originalTitle={streamInfo.originalTitle || ''}
-                // Prioriza a imagem do episódio, senão usa a do backdrop da série
-                backgroundUrl={episodeData?.still_path || streamInfo.backdropPath}
-                isLoading={false}
-                onPlay={handlePlay}
-            />
-        </main>
-    );
-  }
 
   const customStreams = streamInfo.streams.filter(s => s.playerType === 'custom');
 
