@@ -3,7 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import Hls from "hls.js"
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, Settings, PictureInPicture, X, Download } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, Settings, PictureInPicture, X, Download, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -74,6 +74,11 @@ export default function VideoPlayer({
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
   const [endingTriggered, setEndingTriggered] = useState(false);
+  
+  // Novo estado para o menu de configurações
+  const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
@@ -97,8 +102,8 @@ export default function VideoPlayer({
             hlsRef.current = null;
         }
 
-        const savedTime = video.currentTime; // Salva o tempo atual antes de mudar a fonte
-    
+        const savedTime = video.currentTime; 
+
         const isHls = currentSource.url.toLowerCase().includes('.m3u8');
         
         if (isHls && Hls.isSupported()) {
@@ -111,7 +116,7 @@ export default function VideoPlayer({
     
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 console.log("HLS.js: Manifesto carregado.");
-                video.currentTime = savedTime; // Restaura o tempo
+                video.currentTime = savedTime; 
                 if (!isIphone && !showContinueWatching) {
                     video.play().catch(() => {
                         console.warn("Autoplay foi impedido pelo navegador.");
@@ -133,7 +138,7 @@ export default function VideoPlayer({
         } else {
             console.log("Player: Anexando fonte de vídeo direta (MP4, Proxy, ou HLS Nativo).");
             video.src = currentSource.url;
-            video.currentTime = savedTime; // Restaura o tempo para fontes diretas
+            video.currentTime = savedTime; 
         }
     
         setEndingTriggered(false);
@@ -232,6 +237,17 @@ export default function VideoPlayer({
       }
     };
   }, [resetControlsTimeout, hideControls]);
+  
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      // Reset para o menu principal quando o popover é fechado
+      const timer = setTimeout(() => {
+        setSettingsMenu('main');
+      }, 150); // Delay para permitir a animação de fechamento
+      return () => clearTimeout(timer);
+    }
+  }, [isSettingsOpen]);
+
 
   const triggerNextEpisodeOverlay = useCallback(() => {
     if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) {
@@ -436,12 +452,14 @@ export default function VideoPlayer({
     if (!videoRef.current) return
     videoRef.current.playbackRate = rate
     setPlaybackRate(rate)
+    setSettingsMenu('main');
   }
   
   const changeQuality = (source: StreamSource) => {
       if(currentSource.url !== source.url){
           setCurrentSource(source);
       }
+      setSettingsMenu('main');
   }
 
   const toggleAutoplay = () => {
@@ -501,7 +519,7 @@ export default function VideoPlayer({
         video.load();
         setTimeout(() => {
             video.src = currentSrc;
-            video.load(); // Adicionado para garantir que ele tente recarregar
+            video.load();
             video.play().catch(e => console.warn("Retry play failed", e));
         }, 100);
     }
@@ -652,6 +670,9 @@ export default function VideoPlayer({
       : 0
   
   const bufferPercentage = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
+  
+  const currentSpeedLabel = playbackRate === 1 ? "Normal" : `${playbackRate}x`;
+
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -935,7 +956,7 @@ export default function VideoPlayer({
                   <div className="h-6 w-px bg-white/20" />
                 </>
               )}
-              <Popover>
+              <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <PopoverTrigger asChild>
@@ -947,61 +968,81 @@ export default function VideoPlayer({
                   <TooltipContent>Configurações</TooltipContent>
                 </Tooltip>
                 <PopoverContent 
-                  className="w-56 border-zinc-700 bg-black/80 p-2 text-white backdrop-blur"
+                  className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur"
                   side="top"
                   align="end"
                   container={containerRef.current}
                   style={{ zIndex: 2147483647 }}
                 >
-                    {hasNextEpisode && (
-                        <>
-                        <div className="mb-1 px-1 text-xs font-semibold text-white/80">Controles</div>
+                    {settingsMenu === 'main' && (
                         <div className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between h-8 w-full px-1">
-                                <Label htmlFor="autoplay-switch" className="text-sm font-normal">Próximo ep. automático</Label>
-                                <Switch
-                                id="autoplay-switch"
-                                checked={isAutoplayEnabled}
-                                onCheckedChange={toggleAutoplay}
-                                />
-                            </div>
+                             {hasNextEpisode && (
+                                <div className="flex items-center justify-between h-9 w-full px-2">
+                                    <Label htmlFor="autoplay-switch" className="text-sm font-normal flex items-center gap-2">Próximo ep. automático</Label>
+                                    <Switch
+                                    id="autoplay-switch"
+                                    checked={isAutoplayEnabled}
+                                    onCheckedChange={toggleAutoplay}
+                                    />
+                                </div>
+                            )}
+                            <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('playbackRate')}>
+                                <span className="flex items-center gap-2">Velocidade</span>
+                                <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
+                            </Button>
+                            {sources && sources.length > 1 && (
+                                <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
+                                    <span className="flex items-center gap-2">Qualidade</span>
+                                    <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
+                                </Button>
+                            )}
                         </div>
-                        </>
                     )}
-
-                    {sources && sources.length > 0 && (
-                        <>
-                            <div className="my-1 px-1 text-xs font-semibold text-white/80">Qualidade</div>
+                    {settingsMenu === 'quality' && (
+                        <div>
+                            <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                <ChevronLeft className="h-4 w-4 mr-2"/>
+                                Qualidade
+                            </Button>
                             <div className="flex flex-col gap-1">
                                 {sources.map((source) => (
                                 <Button
                                     key={source.url}
-                                    variant={currentSource.url === source.url ? "secondary" : "ghost"}
-                                    className="h-8 w-full justify-start"
+                                    variant="ghost"
+                                    className="h-9 w-full justify-start pl-8 pr-2 relative"
                                     onClick={() => changeQuality(source)}
                                 >
+                                    {currentSource.url === source.url && <Check className="absolute left-2 h-4 w-4"/>}
                                     {source.name}
                                 </Button>
                                 ))}
                             </div>
-                        </>
+                        </div>
                     )}
-
-                    <div className="my-1 px-1 text-xs font-semibold text-white/80">Velocidade</div>
-                    <div className="flex flex-col gap-1">
-                        {playbackRates.map((r) => (
-                        <Button
-                            key={r}
-                            variant={playbackRate === r ? "secondary" : "ghost"}
-                            className="h-8 w-full justify-start"
-                            onClick={() => changePlaybackRate(r)}
-                        >
-                            {r === 1 ? "Normal" : `${r}x`}
-                        </Button>
-                        ))}
-                    </div>
+                    {settingsMenu === 'playbackRate' && (
+                        <div>
+                            <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                <ChevronLeft className="h-4 w-4 mr-2"/>
+                                Velocidade
+                            </Button>
+                            <div className="flex flex-col gap-1">
+                                {playbackRates.map((r) => (
+                                <Button
+                                    key={r}
+                                    variant="ghost"
+                                    className="h-9 w-full justify-start pl-8 pr-2 relative"
+                                    onClick={() => changePlaybackRate(r)}
+                                >
+                                    {playbackRate === r && <Check className="absolute left-2 h-4 w-4"/>}
+                                    {r === 1 ? "Normal" : `${r}x`}
+                                </Button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </PopoverContent>
               </Popover>
+
 
               {pipSupported && (
                  <>
