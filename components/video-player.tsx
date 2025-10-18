@@ -30,6 +30,8 @@ type VideoPlayerProps = {
   onNextEpisode?: () => void
 }
 
+const AD_URL = "https://otieu.com/4/9835277";
+
 export default function VideoPlayer({
   sources,
   title,
@@ -45,9 +47,10 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
+  const adShownForSessionRef = useRef(false); // Ref para controlar o anúncio na sessão atual
 
   const [currentSource, setCurrentSource] = useState(sources[0]);
-  const [isPlaying, setIsPlaying] = useState(false); // ALTERAÇÃO: Inicia sempre pausado
+  const [isPlaying, setIsPlaying] = useState(false); // Inicia sempre pausado
   const [showControls, setShowControls] = useState(true)
 
   const [currentTime, setCurrentTime] = useState(0)
@@ -104,34 +107,20 @@ export default function VideoPlayer({
         const isHls = currentSource.url.toLowerCase().includes('.m3u8');
         
         if (isHls && Hls.isSupported()) {
-            console.log("HLS.js: Anexando player para stream HLS...");
-            const hls = new Hls({
-              maxBufferLength: 30,
-              maxMaxBufferLength: 60,
-            });
+            const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60 });
             hlsRef.current = hls;
-            
             hls.loadSource(currentSource.url);
             hls.attachMedia(video);
-    
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                console.log("HLS.js: Manifesto carregado.");
                 video.currentTime = savedTime; 
-                // ALTERAÇÃO: Removido autoplay daqui
             });
-    
             hls.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
-                    console.error('HLS.js: Erro fatal encontrado', data);
-                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                       setError("Erro de rede ao carregar o vídeo. Verifique sua conexão.");
-                    } else {
-                       setError("Não foi possível carregar o vídeo (erro de mídia).");
-                    }
+                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { setError("Erro de rede ao carregar o vídeo."); } 
+                     else { setError("Não foi possível carregar o vídeo (erro de mídia)."); }
                 }
             });
         } else {
-            console.log("Player: Anexando fonte de vídeo direta (MP4, Proxy, ou HLS Nativo).");
             video.src = currentSource.url;
             video.currentTime = savedTime; 
         }
@@ -143,16 +132,10 @@ export default function VideoPlayer({
         }
         
         return () => {
-            if (hlsRef.current) {
-                hlsRef.current.destroy();
-                hlsRef.current = null;
-            }
-            if (video) {
-                video.removeAttribute('src');
-                video.load();
-            }
+            if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+            if (video) { video.removeAttribute('src'); video.load(); }
         };
-    }, [currentSource, showContinueWatching]);
+    }, [currentSource]);
 
 
   useEffect(() => {
@@ -178,9 +161,7 @@ export default function VideoPlayer({
           }
         }
       }
-    } catch (e) {
-      // no-op
-    }
+    } catch (e) { /* no-op */ }
   }, [positionKey, rememberPosition])
 
   useEffect(() => {
@@ -190,9 +171,7 @@ export default function VideoPlayer({
         if (videoRef.current && videoRef.current.currentTime > 0) {
           localStorage.setItem(positionKey, String(videoRef.current.currentTime || 0))
         }
-      } catch (e) {
-        // no-op
-      }
+      } catch (e) { /* no-op */ }
     }, 1500)
     return () => clearInterval(id)
   }, [positionKey, rememberPosition])
@@ -235,18 +214,14 @@ export default function VideoPlayer({
   
   useEffect(() => {
     if (!isSettingsOpen) {
-      const timer = setTimeout(() => {
-        setSettingsMenu('main');
-      }, 150); 
+      const timer = setTimeout(() => setSettingsMenu('main'), 150); 
       return () => clearTimeout(timer);
     }
   }, [isSettingsOpen]);
 
 
   const triggerNextEpisodeOverlay = useCallback(() => {
-    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) {
-        return;
-    }
+    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) return;
     setEndingTriggered(true);
     setShowNextEpisodeOverlay(true);
     setCountdown(5);
@@ -261,15 +236,12 @@ export default function VideoPlayer({
     setIsLoading(false)
     setIsBuffering(false)
     const v = videoRef.current;
-    if (v) {
-        if (showContinueWatching && rememberPosition) {
-            const savedPos = localStorage.getItem(positionKey)
-            const n = Number.parseFloat(savedPos || '0');
-            if (!Number.isNaN(n) && n > 5) {
-                v.currentTime = n;
-            }
-        } 
-        // ALTERAÇÃO: Removido autoplay daqui
+    if (v && showContinueWatching && rememberPosition) {
+        const savedPos = localStorage.getItem(positionKey)
+        const n = Number.parseFloat(savedPos || '0');
+        if (!Number.isNaN(n) && n > 5) {
+            v.currentTime = n;
+        }
     }
   }
   const handleError = () => {
@@ -284,17 +256,12 @@ export default function VideoPlayer({
     if (!videoRef.current) return;
     const { currentTime, duration } = videoRef.current;
     setCurrentTime(currentTime);
-
     if (duration > 0 && duration - currentTime < 10 && !endingTriggered) {
       triggerNextEpisodeOverlay();
     }
-  
     try {
       const buf = videoRef.current.buffered;
-      if (buf && buf.length > 0) {
-        const end = buf.end(buf.length - 1);
-        setBufferedEnd(end);
-      }
+      if (buf && buf.length > 0) { setBufferedEnd(buf.end(buf.length - 1)); }
     } catch {}
   };
 
@@ -334,23 +301,33 @@ export default function VideoPlayer({
         });
       }, 1000);
     }
-  
-    return () => {
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-    };
+    return () => { if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); } };
   }, [showNextEpisodeOverlay, handlePlayNext]);
 
   const togglePlay = useCallback(() => {
-    const v = videoRef.current
-    if (!v) return
-    if (v.paused) {
-      v.play().catch(() => handleError())
-    } else {
-      v.pause()
+    const v = videoRef.current;
+    if (!v) return;
+
+    // Lógica do anúncio no primeiro play
+    if (!adShownForSessionRef.current && v.paused) {
+        const adKey = `ad-shown-${rememberPositionKey}`;
+        try {
+            if (!localStorage.getItem(adKey)) {
+                window.open(AD_URL, '_blank', 'noopener,noreferrer');
+                localStorage.setItem(adKey, 'true');
+            }
+        } catch (e) {
+            console.error("Não foi possível acessar o localStorage para o anúncio:", e);
+        }
+        adShownForSessionRef.current = true; // Marca que o anúncio foi verificado nesta sessão
     }
-  }, [])
+
+    if (v.paused) {
+        v.play().catch(() => handleError());
+    } else {
+        v.pause();
+    }
+  }, [rememberPositionKey]);
 
   const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ('ontouchstart' in window) return;
@@ -392,44 +369,30 @@ export default function VideoPlayer({
     v.volume = newVolume
     setVolume(newVolume)
     setIsMuted(newVolume === 0)
-    try {
-      localStorage.setItem(volumeKey, String(newVolume))
-    } catch { }
+    try { localStorage.setItem(volumeKey, String(newVolume)) } catch { }
   }
 
   const toggleFullscreen = useCallback(async () => {
     const video = videoRef.current;
     if (!video) return;
-  
-    if (video.webkitEnterFullscreen) {
-        video.webkitEnterFullscreen();
-        return;
-    }
-
+    if (video.webkitEnterFullscreen) { video.webkitEnterFullscreen(); return; }
     const container = containerRef.current;
     if (!container) return;
-
     try {
       if (!document.fullscreenElement) {
         await container.requestFullscreen();
-        if (screen.orientation && typeof screen.orientation.lock === 'function') {
-          await screen.orientation.lock('landscape');
-        }
+        if (screen.orientation && typeof screen.orientation.lock === 'function') { await screen.orientation.lock('landscape'); }
       } else {
         await document.exitFullscreen();
       }
-    } catch (err) {
-      console.error("Erro ao gerenciar fullscreen ou orientação:", err);
-    }
+    } catch (err) { console.error("Erro ao gerenciar fullscreen:", err); }
   }, []);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
-      if (!isCurrentlyFullscreen && screen.orientation && typeof screen.orientation.unlock === 'function') {
-        screen.orientation.unlock();
-      }
+      if (!isCurrentlyFullscreen && screen.orientation && typeof screen.orientation.unlock === 'function') { screen.orientation.unlock(); }
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -443,18 +406,14 @@ export default function VideoPlayer({
   }
   
   const changeQuality = (source: StreamSource) => {
-      if(currentSource.url !== source.url){
-          setCurrentSource(source);
-      }
+      if(currentSource.url !== source.url){ setCurrentSource(source); }
       setSettingsMenu('main');
   }
 
   const toggleAutoplay = () => {
     setIsAutoplayEnabled(prev => {
       const newState = !prev;
-      try {
-        localStorage.setItem(autoplayKey, JSON.stringify(newState));
-      } catch (e) { /* no-op */ }
+      try { localStorage.setItem(autoplayKey, JSON.stringify(newState)); } catch (e) { /* no-op */ }
       return newState;
     });
   };
@@ -463,14 +422,9 @@ export default function VideoPlayer({
     const v = videoRef.current
     if (!v || !document.pictureInPictureEnabled) return
     try {
-      if (document.pictureInPictureElement) {
-        await (document as any).exitPictureInPicture()
-      } else {
-        await (v as any).requestPictureInPicture()
-      }
-    } catch (e) {
-      console.error("Erro no PIP", e)
-    }
+      if (document.pictureInPictureElement) { await (document as any).exitPictureInPicture() } 
+      else { await (v as any).requestPictureInPicture() }
+    } catch (e) { console.error("Erro no PIP", e) }
   }, [])
 
   useEffect(() => {
@@ -515,19 +469,11 @@ export default function VideoPlayer({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === "INPUT" ||
-          activeElement.tagName === "TEXTAREA" ||
-          activeElement.getAttribute("role") === "slider")
-      ) {
-        return;
-      }
+      if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.getAttribute("role") === "slider")) return;
   
       if (e.key === ' ' && !e.repeat) {
         e.preventDefault();
         if (isSpeedingUpRef.current) return;
-  
         spacebarDownTimer.current = setTimeout(() => {
           if (videoRef.current && isPlaying) {
             isSpeedingUpRef.current = true;
@@ -557,14 +503,10 @@ export default function VideoPlayer({
         if (spacebarDownTimer.current) {
           clearTimeout(spacebarDownTimer.current);
           spacebarDownTimer.current = null;
-          if (!isSpeedingUpRef.current) {
-            togglePlay();
-          }
+          if (!isSpeedingUpRef.current) { togglePlay(); }
         }
         if (isSpeedingUpRef.current) {
-          if (videoRef.current) {
-            videoRef.current.playbackRate = originalRateRef.current;
-          }
+          if (videoRef.current) { videoRef.current.playbackRate = originalRateRef.current; }
           setPlaybackRate(originalRateRef.current);
           setShowSpeedHint(false);
           isSpeedingUpRef.current = false;
@@ -599,14 +541,10 @@ export default function VideoPlayer({
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current.time < 350 && lastTapRef.current.side === side;
-
     if (isDoubleTap) {
       if (side === 'left') seek(-10);
       if (side === 'right') seek(10);
       lastTapRef.current = { time: 0, side: 'center' };
-    } else if (side === 'center') {
-      resetControlsTimeout();
-      lastTapRef.current = { time: now, side };
     } else {
       resetControlsTimeout();
       lastTapRef.current = { time: now, side };
@@ -687,7 +625,6 @@ export default function VideoPlayer({
           onEnded={handleEnded}
           preload="metadata"
           playsInline
-          // ALTERAÇÃO: Removido autoplay daqui para sempre iniciar pausado
         />
          {currentSource.thumbnailUrl && (
           <video
@@ -736,7 +673,6 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Este é o botão de play central que aparece quando o vídeo está pausado */}
         {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
           <button
             style={{ transform: 'translateZ(0)' }}
@@ -917,7 +853,7 @@ export default function VideoPlayer({
                   <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
                 </div>
               </div>
-              <div className="hidden md:flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
+              <div className="flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
                 <span>{formatTime(currentTime)}</span>
                 <span>/</span>
                 <span>{formatTime(duration)}</span>
