@@ -21,13 +21,11 @@ export async function GET(
       if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
         const downloadUrl = docData.urls[0].url;
         
-        // Retorna uma página HTML que inicia o download via meta refresh.
         const html = `
         <!DOCTYPE html>
         <html lang="pt-BR">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv="refresh" content="3;url=${downloadUrl}">
             <title>Iniciando Download</title>
             <style>
                 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #111; color: #eee; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
@@ -40,9 +38,22 @@ export async function GET(
         </head>
         <body>
             <div class="container">
-                <h1>Seu download começará em breve...</h1>
-                <p>Se o download não iniciar automaticamente, <a href="${downloadUrl}" download>clique aqui</a>.</p>
+                <h1>Seu download foi iniciado.</h1>
+                <p>Se a janela de download não aparecer, <a href="${downloadUrl}" download>clique aqui para tentar novamente</a>.</p>
             </div>
+            <script>
+                (function() {
+                    const url = "${downloadUrl}";
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    // O atributo 'download' força o navegador a baixar o arquivo.
+                    a.setAttribute('download', '');
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                })();
+            </script>
         </body>
         </html>
         `;
