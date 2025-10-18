@@ -20,48 +20,38 @@ export async function GET(
       const docData = docSnap.data();
       if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
         const downloadUrl = docData.urls[0].url;
-        
-        const html = `
-        <!DOCTYPE html>
-        <html lang="pt-BR">
-        <head>
-            <meta charset="UTF-8">
-            <title>Iniciando Download</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #111; color: #eee; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
-                .container { padding: 2rem; background-color: #1c1c1c; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-                h1 { color: #fff; margin-bottom: 0.5rem; }
-                p { color: #aaa; }
-                a { color: #e50914; text-decoration: none; font-weight: bold; }
-                a:hover { text-decoration: underline; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>Seu download foi iniciado.</h1>
-                <p>Se a janela de download não aparecer, <a href="${downloadUrl}" download>clique aqui para tentar novamente</a>.</p>
-            </div>
-            <script>
-                (function() {
-                    const url = "${downloadUrl}";
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    // O atributo 'download' força o navegador a baixar o arquivo.
-                    a.setAttribute('download', '');
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                })();
-            </script>
-        </body>
-        </html>
-        `;
 
-        return new NextResponse(html, {
-            headers: {
-                'Content-Type': 'text/html',
-            },
+        // Busca o arquivo externo para fazer o streaming
+        const externalResponse = await fetch(downloadUrl);
+
+        if (!externalResponse.ok || !externalResponse.body) {
+          return NextResponse.json({ error: "Não foi possível buscar o arquivo na origem." }, { status: 502 });
+        }
+
+        const body = externalResponse.body;
+        const headers = new Headers();
+
+        // Copia headers essenciais para o navegador saber o tipo e tamanho do arquivo
+        headers.set('Content-Type', externalResponse.headers.get('Content-Type') || 'application/octet-stream');
+        headers.set('Content-Length', externalResponse.headers.get('Content-Length') || '0');
+
+        // Tenta extrair um nome de arquivo legível da URL
+        let filename = `filme_${tmdbId}.mp4`;
+        try {
+          const urlPath = new URL(downloadUrl).pathname;
+          const parts = urlPath.split('/');
+          filename = decodeURIComponent(parts[parts.length - 1]);
+        } catch (e) {
+          console.warn("Não foi possível extrair o nome do arquivo da URL.");
+        }
+
+        // **A MÁGICA ACONTECE AQUI: Força o navegador a baixar o arquivo**
+        headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+
+        // Retorna uma nova resposta que transmite o arquivo para o usuário
+        return new NextResponse(body, {
+            status: 200,
+            headers: headers,
         });
       }
     }
