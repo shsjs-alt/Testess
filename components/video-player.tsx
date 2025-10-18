@@ -13,8 +13,13 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
+type StreamSource = {
+  url: string;
+  name: string; // Ex: "HD", "1080p"
+}
+
 type VideoPlayerProps = {
-  src: string
+  sources: StreamSource[]
   title: string
   downloadUrl?: string
   onClose?: () => void
@@ -25,7 +30,7 @@ type VideoPlayerProps = {
 }
 
 export default function VideoPlayer({
-  src,
+  sources,
   title,
   downloadUrl,
   onClose,
@@ -41,6 +46,7 @@ export default function VideoPlayer({
 
   const isIphone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent);
 
+  const [currentSource, setCurrentSource] = useState(sources[0]);
   const [isPlaying, setIsPlaying] = useState(!isIphone);
   const [showControls, setShowControls] = useState(true)
 
@@ -69,7 +75,7 @@ export default function VideoPlayer({
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
-  const positionKey = `video-pos:${rememberPositionKey || src}`
+  const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
   
   const hlsRef = useRef<Hls | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -82,25 +88,28 @@ export default function VideoPlayer({
 
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !src) return;
+        if (!video || !currentSource.url) return;
     
         if (hlsRef.current) {
             hlsRef.current.destroy();
             hlsRef.current = null;
         }
+
+        const savedTime = video.currentTime; // Salva o tempo atual antes de mudar a fonte
     
-        const isHls = src.toLowerCase().includes('.m3u8');
+        const isHls = currentSource.url.toLowerCase().includes('.m3u8');
         
         if (isHls && Hls.isSupported()) {
             console.log("HLS.js: Anexando player para stream HLS...");
             const hls = new Hls();
             hlsRef.current = hls;
             
-            hls.loadSource(src);
+            hls.loadSource(currentSource.url);
             hls.attachMedia(video);
     
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 console.log("HLS.js: Manifesto carregado.");
+                video.currentTime = savedTime; // Restaura o tempo
                 if (!isIphone && !showContinueWatching) {
                     video.play().catch(() => {
                         console.warn("Autoplay foi impedido pelo navegador.");
@@ -121,7 +130,8 @@ export default function VideoPlayer({
             });
         } else {
             console.log("Player: Anexando fonte de vídeo direta (MP4, Proxy, ou HLS Nativo).");
-            video.src = src;
+            video.src = currentSource.url;
+            video.currentTime = savedTime; // Restaura o tempo para fontes diretas
         }
     
         setEndingTriggered(false);
@@ -140,7 +150,7 @@ export default function VideoPlayer({
                 video.load();
             }
         };
-    }, [src, isIphone, showContinueWatching]);
+    }, [currentSource, isIphone, showContinueWatching]);
 
 
   useEffect(() => {
@@ -425,6 +435,12 @@ export default function VideoPlayer({
     videoRef.current.playbackRate = rate
     setPlaybackRate(rate)
   }
+  
+  const changeQuality = (source: StreamSource) => {
+      if(currentSource.url !== source.url){
+          setCurrentSource(source);
+      }
+  }
 
   const toggleAutoplay = () => {
     setIsAutoplayEnabled(prev => {
@@ -478,12 +494,14 @@ export default function VideoPlayer({
     setIsLoading(true);
     const video = videoRef.current;
     if (video) {
-        const currentSrc = src;
+        const currentSrc = currentSource.url;
         video.src = ''; 
         video.load();
         setTimeout(() => {
             video.src = currentSrc;
-        }, 50);
+            video.load(); // Adicionado para garantir que ele tente recarregar
+            video.play().catch(e => console.warn("Retry play failed", e));
+        }, 100);
     }
   }
 
@@ -655,6 +673,7 @@ export default function VideoPlayer({
           onEnded={handleEnded}
           preload="metadata"
           playsInline
+          autoPlay={!isIphone}
         />
 
         <div
@@ -662,7 +681,6 @@ export default function VideoPlayer({
           onClick={handleMainClick}
         />
         
-        {/* MODIFICAÇÃO: Mostra o spinner no loading inicial E no buffering, remove a sombra escura e muda a cor. */}
         {(isLoading || isBuffering) && (
           <div 
             style={{ transform: 'translateZ(0)' }} 
@@ -883,7 +901,7 @@ export default function VideoPlayer({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button asChild size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                        <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                        <a href={downloadUrl} download>
                             <Download className="h-5 w-5 md:h-6 md:w-6" />
                         </a>
                       </Button>
@@ -911,34 +929,53 @@ export default function VideoPlayer({
                   container={containerRef.current}
                   style={{ zIndex: 2147483647 }}
                 >
-                  {hasNextEpisode && (
-                    <>
-                      <div className="mb-2 px-1 text-xs font-semibold text-white/80">Controles</div>
-                      <div className="flex flex-col gap-1">
-                          <div className="flex items-center justify-between h-8 w-full px-1">
-                            <Label htmlFor="autoplay-switch" className="text-sm font-normal">Próximo ep. automático</Label>
-                            <Switch
-                              id="autoplay-switch"
-                              checked={isAutoplayEnabled}
-                              onCheckedChange={toggleAutoplay}
-                            />
-                          </div>
-                      </div>
-                    </>
-                  )}
-                  <div className="my-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
-                  <div className="flex flex-col gap-1">
-                    {playbackRates.map((r) => (
-                      <Button
-                        key={r}
-                        variant={playbackRate === r ? "secondary" : "ghost"}
-                        className="h-8 w-full justify-start"
-                        onClick={() => changePlaybackRate(r)}
-                      >
-                        {r === 1 ? "Normal" : `${r}x`}
-                      </Button>
-                    ))}
-                  </div>
+                    {hasNextEpisode && (
+                        <>
+                        <div className="mb-2 px-1 text-xs font-semibold text-white/80">Controles</div>
+                        <div className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between h-8 w-full px-1">
+                                <Label htmlFor="autoplay-switch" className="text-sm font-normal">Próximo ep. automático</Label>
+                                <Switch
+                                id="autoplay-switch"
+                                checked={isAutoplayEnabled}
+                                onCheckedChange={toggleAutoplay}
+                                />
+                            </div>
+                        </div>
+                        </>
+                    )}
+
+                    {sources.length > 1 && (
+                        <>
+                            <div className="my-2 px-1 text-xs font-semibold text-white/80">Qualidade</div>
+                            <div className="flex flex-col gap-1">
+                                {sources.map((source) => (
+                                <Button
+                                    key={source.url}
+                                    variant={currentSource.url === source.url ? "secondary" : "ghost"}
+                                    className="h-8 w-full justify-start"
+                                    onClick={() => changeQuality(source)}
+                                >
+                                    {source.name}
+                                </Button>
+                                ))}
+                            </div>
+                        </>
+                    )}
+
+                    <div className="my-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
+                    <div className="flex flex-col gap-1">
+                        {playbackRates.map((r) => (
+                        <Button
+                            key={r}
+                            variant={playbackRate === r ? "secondary" : "ghost"}
+                            className="h-8 w-full justify-start"
+                            onClick={() => changePlaybackRate(r)}
+                        >
+                            {r === 1 ? "Normal" : `${r}x`}
+                        </Button>
+                        ))}
+                    </div>
                 </PopoverContent>
               </Popover>
 

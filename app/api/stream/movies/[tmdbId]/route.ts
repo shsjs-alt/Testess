@@ -6,26 +6,19 @@ import { doc, getDoc, DocumentSnapshot } from "firebase/firestore";
 const TMDB_API_KEY = "860b66ade580bacae581f4228fad49fc";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-// Função auxiliar para verificar se é um link de stream direto
-function isDirectStreamLink(url: string): boolean {
-    try {
-        const path = new URL(url).pathname.toLowerCase().split('?')[0];
-        return path.endsWith('.mp4') || path.endsWith('.m3u8');
-    } catch (error) {
-        return false;
-    }
-}
-
 // Função para buscar o stream do Firestore
 async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
     if (docSnap.exists()) {
         const docData = docSnap.data();
-        if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
-            const firestoreUrl = docData.urls[0].url as string;
-            console.log(`[Filme ${docSnap.id}] Encontrado stream no Firestore: ${firestoreUrl}`);
-            const playerType = isDirectStreamLink(firestoreUrl) ? "custom" : "iframe";
+        if (docData && Array.isArray(docData.urls) && docData.urls.length > 0) {
+            console.log(`[Filme ${docSnap.id}] Encontrado(s) ${docData.urls.length} stream(s) no Firestore.`);
+            const streams = docData.urls.map((stream: any) => ({
+                playerType: "custom",
+                url: stream.url,
+                name: stream.quality || "HD", // Usa a qualidade do Firestore ou "HD" como padrão
+            }));
             return NextResponse.json({ 
-                streams: [{ playerType, url: firestoreUrl, name: "Servidor Principal" }], 
+                streams: streams, 
                 ...mediaInfo 
             });
         }

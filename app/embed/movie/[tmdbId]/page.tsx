@@ -8,8 +8,14 @@ import React, { useEffect, useState } from 'react';
 import VideoPlayer from '@/components/video-player';
 import { PlayerOverlay } from '@/components/player-overley';
 
+type Stream = {
+  url: string;
+  name: string;
+  playerType: string;
+}
+
 type StreamInfo = {
-  streams: { url: string; playerType: string }[];
+  streams: Stream[];
   title: string | null;
   originalTitle: string | null;
   backdropPath: string | null;
@@ -94,12 +100,29 @@ export default function MovieEmbedPage() {
     );
   }
 
-  const stream = streamInfo.streams[0];
-  if (stream.playerType === 'gdrive' || stream.playerType === 'iframe') {
+  const customStreams = streamInfo.streams.filter(s => s.playerType === 'custom');
+
+  if (customStreams.length > 0) {
+    return (
+      <main className="w-screen h-screen relative bg-black">
+        <VideoPlayer
+          sources={customStreams.map(s => ({ url: s.url, name: s.name }))}
+          title={streamInfo.title || 'Filme'}
+          downloadUrl={`/download/movies/${tmdbId}`}
+          rememberPosition={true}
+          rememberPositionKey={`movie-${tmdbId}`}
+        />
+      </main>
+    );
+  }
+  
+  // Fallback para iframe se não houver streams customizados
+  const iframeStream = streamInfo.streams.find(s => s.playerType === 'iframe');
+  if (iframeStream) {
     return (
       <main className="w-screen h-screen relative bg-black">
         <iframe
-          src={stream.url}
+          src={iframeStream.url}
           className="w-full h-full border-0"
           allow="autoplay; fullscreen"
           allowFullScreen
@@ -107,16 +130,12 @@ export default function MovieEmbedPage() {
       </main>
     );
   }
-  
+
   return (
-    <main className="w-screen h-screen relative bg-black">
-      <VideoPlayer
-        src={stream.url}
-        title={streamInfo.title || 'Filme'}
-        downloadUrl={`https://primevicio.lat/download/movie/${tmdbId}`}
-        rememberPosition={true}
-        rememberPositionKey={`movie-${tmdbId}`}
-      />
-    </main>
+      <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
+        <Clapperboard className="w-16 h-16 text-zinc-700 mb-4" />
+        <h2 className="text-xl font-bold mb-2">Player Incompatível</h2>
+        <p className="text-zinc-400">O tipo de player para este conteúdo não é suportado.</p>
+      </main>
   );
 }
