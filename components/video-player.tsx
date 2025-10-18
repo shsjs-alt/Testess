@@ -657,6 +657,7 @@ export default function VideoPlayer({
           isPlaying && !showControls && !showNextEpisodeOverlay && "cursor-none"
         )}
         onDoubleClick={e => e.preventDefault()}
+        style={{ transform: 'translateZ(0)' }}
       >
         <video
           ref={videoRef}
@@ -931,7 +932,7 @@ export default function VideoPlayer({
                 >
                     {hasNextEpisode && (
                         <>
-                        <div className="mb-2 px-1 text-xs font-semibold text-white/80">Controles</div>
+                        <div className="mb-1 px-1 text-xs font-semibold text-white/80">Controles</div>
                         <div className="flex flex-col gap-1">
                             <div className="flex items-center justify-between h-8 w-full px-1">
                                 <Label htmlFor="autoplay-switch" className="text-sm font-normal">Próximo ep. automático</Label>
@@ -945,9 +946,9 @@ export default function VideoPlayer({
                         </>
                     )}
 
-                    {sources.length > 1 && (
+                    {sources && sources.length > 0 && (
                         <>
-                            <div className="my-2 px-1 text-xs font-semibold text-white/80">Qualidade</div>
+                            <div className="my-1 px-1 text-xs font-semibold text-white/80">Qualidade</div>
                             <div className="flex flex-col gap-1">
                                 {sources.map((source) => (
                                 <Button
@@ -963,7 +964,7 @@ export default function VideoPlayer({
                         </>
                     )}
 
-                    <div className="my-2 px-1 text-xs font-semibold text-white/80">Velocidade</div>
+                    <div className="my-1 px-1 text-xs font-semibold text-white/80">Velocidade</div>
                     <div className="flex flex-col gap-1">
                         {playbackRates.map((r) => (
                         <Button
