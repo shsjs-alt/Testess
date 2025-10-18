@@ -46,10 +46,8 @@ export default function VideoPlayer({
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
 
-  const isIphone = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent);
-
   const [currentSource, setCurrentSource] = useState(sources[0]);
-  const [isPlaying, setIsPlaying] = useState(!isIphone);
+  const [isPlaying, setIsPlaying] = useState(false); // ALTERAÇÃO: Inicia sempre pausado
   const [showControls, setShowControls] = useState(true)
 
   const [currentTime, setCurrentTime] = useState(0)
@@ -119,12 +117,7 @@ export default function VideoPlayer({
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 console.log("HLS.js: Manifesto carregado.");
                 video.currentTime = savedTime; 
-                if (!isIphone && !showContinueWatching) {
-                    video.play().catch(() => {
-                        console.warn("Autoplay foi impedido pelo navegador.");
-                        setIsPlaying(false);
-                    });
-                }
+                // ALTERAÇÃO: Removido autoplay daqui
             });
     
             hls.on(Hls.Events.ERROR, (event, data) => {
@@ -159,7 +152,7 @@ export default function VideoPlayer({
                 video.load();
             }
         };
-    }, [currentSource, isIphone, showContinueWatching]);
+    }, [currentSource, showContinueWatching]);
 
 
   useEffect(() => {
@@ -275,12 +268,8 @@ export default function VideoPlayer({
             if (!Number.isNaN(n) && n > 5) {
                 v.currentTime = n;
             }
-        } else if (isPlaying) {
-            v.play().catch(err => {
-                console.warn("Autoplay foi impedido:", err)
-                setIsPlaying(false);
-            });
-        }
+        } 
+        // ALTERAÇÃO: Removido autoplay daqui
     }
   }
   const handleError = () => {
@@ -312,9 +301,6 @@ export default function VideoPlayer({
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return
     setDuration(videoRef.current.duration || 0)
-    if (isIphone) {
-        setIsLoading(false);
-    }
   }
 
   const handleEnded = () => {
@@ -701,7 +687,7 @@ export default function VideoPlayer({
           onEnded={handleEnded}
           preload="metadata"
           playsInline
-          autoPlay={!isIphone}
+          // ALTERAÇÃO: Removido autoplay daqui para sempre iniciar pausado
         />
          {currentSource.thumbnailUrl && (
           <video
@@ -750,6 +736,7 @@ export default function VideoPlayer({
           </div>
         )}
 
+        {/* Este é o botão de play central que aparece quando o vídeo está pausado */}
         {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
           <button
             style={{ transform: 'translateZ(0)' }}
@@ -930,7 +917,7 @@ export default function VideoPlayer({
                   <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
                 </div>
               </div>
-              <div className="flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
+              <div className="hidden md:flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
                 <span>{formatTime(currentTime)}</span>
                 <span>/</span>
                 <span>{formatTime(duration)}</span>

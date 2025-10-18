@@ -6,7 +6,6 @@ import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import VideoPlayer from '@/components/video-player';
-import { PlayerOverlay } from '@/components/player-overley';
 
 type Stream = {
   url: string;
