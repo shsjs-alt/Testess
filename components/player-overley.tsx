@@ -1,68 +1,66 @@
 // components/player-overley.tsx
-"use client"
+import { Play } from 'lucide-react';
+import Image from 'next/image';
+import { Button } from './ui/button';
+import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils'; // Certifique-se de que seu arquivo utilitário cn existe e está funcionando
 
-import { motion } from 'framer-motion';
-import { Zap, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-
-type PlayerOverlayProps = {
+interface PlayerOverlayProps {
   title: string;
-  originalTitle?: string;
-  onPlay: () => void;
-  isLoading: boolean;
+  originalTitle: string;
   backgroundUrl: string | null;
-};
-
-export function PlayerOverlay({ title, originalTitle, onPlay, isLoading, backgroundUrl }: PlayerOverlayProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4 text-center text-white"
-    >
-      {/* Container da Imagem de Fundo e do Overlay Escuro */}
-      {backgroundUrl && (
-        <div
-          className="absolute inset-0 z-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(https://image.tmdb.org/t/p/original${backgroundUrl})` }}
-        >
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" /> 
-        </div>
-      )}
-      
-      {/* Container do Conteúdo (título e botão) - Centralizado */}
-      <div className="relative z-10 flex flex-col items-center">
-        <h1 className="text-3xl md:text-5xl font-bold text-shadow-lg">{title}</h1>
-        {originalTitle && <p className="text-sm text-zinc-300 mt-2 text-shadow">{originalTitle}</p>}
-        
-        {/* BOTÃO COM NOVO DESIGN E EFEITO HOVER */}
-        <button
-          onClick={onPlay}
-          disabled={isLoading}
-          className={cn(
-            "group mt-10 rounded-full bg-black/40 px-6 py-3 text-white ring-1 ring-red-500/50 backdrop-blur-sm transition-all duration-300",
-            "hover:bg-red-600/80 hover:ring-red-500", // Efeito de hover vermelho
-            "disabled:cursor-not-allowed disabled:opacity-50"
-          )}
-        >
-          {isLoading ? (
-            <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
-          ) : (
-            // Conteúdo do botão
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Zap className="h-6 w-6 text-red-500 fill-red-500/50" />
-                <span className="absolute bottom-[-2px] right-[-2px] block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-black/50" />
-              </div>
-              <span className="text-base font-semibold">Servidor 1</span>
-              <span className="ml-1 rounded-md bg-red-800/90 px-2 py-0.5 text-xs font-bold text-red-50">
-                HD
-              </span>
-            </div>
-          )}
-        </button>
-      </div>
-    </motion.div>
-  );
+  isLoading: boolean;
+  onPlay: () => void;
 }
+
+export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
+  title,
+  originalTitle,
+  backgroundUrl,
+  isLoading,
+  onPlay,
+}) => {
+  const imageUrl = backgroundUrl 
+    ? `https://image.tmdb.org/t/p/w1280${backgroundUrl}` 
+    : '/fallback-image.jpg'; // Substitua por uma imagem de fallback padrão se não houver backdrop
+
+  return (
+    <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
+      {backgroundUrl && (
+        <Image
+          src={imageUrl}
+          alt={title}
+          layout="fill"
+          objectFit="cover"
+          className="absolute inset-0 opacity-40 blur-sm"
+          priority
+        />
+      )}
+
+      <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-4 text-white z-10">
+        {isLoading ? (
+          <Loader2 className="w-12 h-12 animate-spin text-white" />
+        ) : (
+          <>
+            <h1 className="text-2xl md:text-4xl font-bold text-center mb-2 leading-tight">
+              {title}
+            </h1>
+            {originalTitle && originalTitle !== title && (
+              <p className="text-md md:text-lg text-zinc-300 text-center mb-6">
+                ({originalTitle})
+              </p>
+            )}
+            <Button
+              onClick={onPlay}
+              className="relative z-20 h-20 w-20 rounded-full bg-white/20 hover:bg-white/30 transition-all flex items-center justify-center group"
+              aria-label="Assistir"
+            >
+              <Play className="h-10 w-10 text-white group-hover:scale-110 transition-transform" />
+            </Button>
+            <p className="text-sm text-zinc-400 mt-4">Clique para assistir</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
