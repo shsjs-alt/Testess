@@ -75,7 +75,6 @@ export default function VideoPlayer({
   const [countdown, setCountdown] = useState(5)
   const [endingTriggered, setEndingTriggered] = useState(false);
   
-  // Novo estado para o menu de configurações
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -108,7 +107,11 @@ export default function VideoPlayer({
         
         if (isHls && Hls.isSupported()) {
             console.log("HLS.js: Anexando player para stream HLS...");
-            const hls = new Hls();
+            const hls = new Hls({
+              // Configurações de otimização para o buffer
+              maxBufferLength: 30, // Segundos de vídeo a serem mantidos no buffer
+              maxMaxBufferLength: 60, // Máximo que o buffer pode crescer
+            });
             hlsRef.current = hls;
             
             hls.loadSource(currentSource.url);
@@ -240,10 +243,9 @@ export default function VideoPlayer({
   
   useEffect(() => {
     if (!isSettingsOpen) {
-      // Reset para o menu principal quando o popover é fechado
       const timer = setTimeout(() => {
         setSettingsMenu('main');
-      }, 150); // Delay para permitir a animação de fechamento
+      }, 150); 
       return () => clearTimeout(timer);
     }
   }, [isSettingsOpen]);
@@ -990,7 +992,7 @@ export default function VideoPlayer({
                                 <span className="flex items-center gap-2">Velocidade</span>
                                 <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
                             </Button>
-                            {sources && sources.length > 1 && (
+                            {sources && sources.length > 0 && (
                                 <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
                                     <span className="flex items-center gap-2">Qualidade</span>
                                     <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
