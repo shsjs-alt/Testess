@@ -16,6 +16,7 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, mediaInfo: any) {
                 playerType: "custom",
                 url: stream.url,
                 name: stream.quality || "HD", // Usa a qualidade do Firestore ou "HD" como padrão
+                thumbnailUrl: stream.thumbnailUrl,
             }));
             return NextResponse.json({ 
                 streams: streams, 

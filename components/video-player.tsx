@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 type StreamSource = {
   url: string;
   name: string; // Ex: "HD", "1080p"
+  thumbnailUrl?: string;
 }
 
 type VideoPlayerProps = {
@@ -40,6 +41,7 @@ export default function VideoPlayer({
   onNextEpisode,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement & { webkitEnterFullscreen?: () => void }>(null)
+  const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
@@ -580,6 +582,9 @@ export default function VideoPlayer({
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
+    if (thumbnailVideoRef.current && currentSource.thumbnailUrl) {
+      thumbnailVideoRef.current.currentTime = time;
+    }
   };
 
   const onProgressLeave = () => {
@@ -676,6 +681,16 @@ export default function VideoPlayer({
           playsInline
           autoPlay={!isIphone}
         />
+         {currentSource.thumbnailUrl && (
+          <video
+            ref={thumbnailVideoRef}
+            src={currentSource.thumbnailUrl}
+            className="pointer-events-none absolute bottom-0 left-0 opacity-0"
+            preload="auto"
+            muted
+            playsInline
+          />
+        )}
 
         <div
           className="absolute inset-0 z-0"
@@ -829,14 +844,22 @@ export default function VideoPlayer({
             className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
           >
              <div
-              className="absolute bottom-full mb-2 hidden -translate-x-1/2 rounded bg-black px-2 py-1 text-xs text-white md:block"
-              style={{
-                left: hoverLeft,
-                visibility: hoverTime !== null ? 'visible' : 'hidden',
-              }}
-            >
-                {formatTime(hoverTime ?? 0)}
-            </div>
+                className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10"
+                style={{
+                  left: hoverLeft,
+                  visibility: hoverTime !== null ? 'visible' : 'hidden',
+                }}
+              >
+                {currentSource.thumbnailUrl && (
+                  <video
+                    ref={thumbnailVideoRef}
+                    src={currentSource.thumbnailUrl}
+                    className="aspect-video w-36 rounded-t-md bg-black"
+                    muted
+                  />
+                )}
+                <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
+              </div>
             
             <div className="relative flex items-center h-2.5 transition-[height] duration-200">
                 <div

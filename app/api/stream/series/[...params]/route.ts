@@ -20,6 +20,7 @@ async function getFirestoreStream(docSnap: DocumentSnapshot, season: string, epi
                         playerType: "custom",
                         url: stream.url,
                         name: stream.quality || "HD",
+                        thumbnailUrl: stream.thumbnailUrl,
                     }));
                     return NextResponse.json({ 
                         streams: streams, 

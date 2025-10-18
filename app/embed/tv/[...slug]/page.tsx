@@ -12,6 +12,7 @@ type Stream = {
   url: string;
   name: string;
   playerType: string;
+  thumbnailUrl?: string;
 };
 
 type StreamInfo = {
@@ -139,7 +140,7 @@ export default function TvEmbedPage() {
     return (
       <main className="w-screen h-screen relative bg-black">
         <VideoPlayer
-          sources={customStreams.map(s => ({ url: s.url, name: s.name }))}
+          sources={customStreams.map(s => ({ url: s.url, name: s.name, thumbnailUrl: s.thumbnailUrl }))}
           title={mediaTitle}
           downloadUrl={`/download/series/${tmdbId}/${season}/${episode}`}
           rememberPosition={true}
