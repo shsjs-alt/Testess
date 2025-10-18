@@ -108,9 +108,8 @@ export default function VideoPlayer({
         if (isHls && Hls.isSupported()) {
             console.log("HLS.js: Anexando player para stream HLS...");
             const hls = new Hls({
-              // Configurações de otimização para o buffer
-              maxBufferLength: 30, // Segundos de vídeo a serem mantidos no buffer
-              maxMaxBufferLength: 60, // Máximo que o buffer pode crescer
+              maxBufferLength: 30,
+              maxMaxBufferLength: 60,
             });
             hlsRef.current = hls;
             
@@ -681,7 +680,7 @@ export default function VideoPlayer({
       <div
         ref={containerRef}
         className={cn(
-          "relative w-full aspect-video bg-black rounded-xl overflow-hidden group select-none",
+          "fixed inset-0 w-full h-full bg-black overflow-hidden group select-none",
           isPlaying && !showControls && !showNextEpisodeOverlay && "cursor-none"
         )}
         onDoubleClick={e => e.preventDefault()}
