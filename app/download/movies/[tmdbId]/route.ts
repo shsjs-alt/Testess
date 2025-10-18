@@ -21,8 +21,37 @@ export async function GET(
       if (docData && Array.isArray(docData.urls) && docData.urls.length > 0 && docData.urls[0].url) {
         const downloadUrl = docData.urls[0].url;
         
-        // Redireciona para a URL do vídeo, o navegador irá lidar com o download se for um link direto
-        return NextResponse.redirect(downloadUrl);
+        // Retorna uma página HTML que inicia o download via meta refresh.
+        const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="refresh" content="3;url=${downloadUrl}">
+            <title>Iniciando Download</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #111; color: #eee; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+                .container { padding: 2rem; background-color: #1c1c1c; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+                h1 { color: #fff; margin-bottom: 0.5rem; }
+                p { color: #aaa; }
+                a { color: #e50914; text-decoration: none; font-weight: bold; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Seu download começará em breve...</h1>
+                <p>Se o download não iniciar automaticamente, <a href="${downloadUrl}" download>clique aqui</a>.</p>
+            </div>
+        </body>
+        </html>
+        `;
+
+        return new NextResponse(html, {
+            headers: {
+                'Content-Type': 'text/html',
+            },
+        });
       }
     }
 

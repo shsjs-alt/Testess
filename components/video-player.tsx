@@ -925,7 +925,7 @@ export default function VideoPlayer({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button asChild size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                        <a href={downloadUrl} download>
+                        <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
                             <Download className="h-5 w-5 md:h-6 md:w-6" />
                         </a>
                       </Button>
