@@ -24,6 +24,11 @@ type StreamInfo = {
 
 type SeasonInfo = {
     episode_count: number;
+    episodes: Episode[];
+}
+
+type Episode = {
+  still_path: string | null;
 }
 
 const API_KEY = "860b66ade580bacae581f4228fad49fc";
@@ -39,7 +44,7 @@ export default function TvEmbedPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
-  const [userInteracted, setUserInteracted] = useState(true);
+  const [userInteracted, setUserInteracted] = useState(false);
 
   useEffect(() => {
     if (!tmdbId || !season || !episode) {
@@ -119,6 +124,7 @@ export default function TvEmbedPage() {
   if (!streamInfo) return null;
 
   const mediaTitle = `${streamInfo.title || 'Série'} - T${season} E${episode}`;
+  const episodeData = seasonInfo?.episodes?.find(e => e.episode_number === parseInt(episode, 10));
 
   if (!userInteracted) {
     return (
@@ -126,7 +132,7 @@ export default function TvEmbedPage() {
             <PlayerOverlay
                 title={mediaTitle}
                 originalTitle={streamInfo.originalTitle || ''}
-                backgroundUrl={streamInfo.backdropPath}
+                backgroundUrl={episodeData?.still_path || streamInfo.backdropPath}
                 isLoading={false}
                 onPlay={handlePlay}
             />

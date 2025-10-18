@@ -930,7 +930,7 @@ export default function VideoPlayer({
                   <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
                 </div>
               </div>
-              <div className="hidden select-none justify-between text-sm text-white/80 md:flex items-center gap-1.5">
+              <div className="flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
                 <span>{formatTime(currentTime)}</span>
                 <span>/</span>
                 <span>{formatTime(duration)}</span>
