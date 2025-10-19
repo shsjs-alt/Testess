@@ -30,7 +30,7 @@ type VideoPlayerProps = {
   onNextEpisode?: () => void
 }
 
-const AD_URL = "https://otieu.com/4/9835277";
+const AD_URL = "https://otieu.com/4/10063432";
 
 export default function VideoPlayer({
   sources,
