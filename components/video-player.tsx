@@ -79,6 +79,8 @@ export default function VideoPlayer({
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  const [whitelistedDomains, setWhitelistedDomains] = useState<string[]>([]);
+
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
@@ -92,21 +94,47 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  useEffect(() => {
+    const fetchWhitelist = async () => {
+      try {
+        const response = await fetch('/api/whitelist');
+        if (response.ok) {
+          const data = await response.json();
+          setWhitelistedDomains(data.domains || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch whitelist", error);
+      }
+    };
+    fetchWhitelist();
+  }, []);
+
   // --- LÓGICA DO ANÚNCIO CENTRALIZADA ---
   const triggerAd = useCallback(() => {
-    if (!adShownForSessionRef.current) {
-      const adKey = `ad-shown-${rememberPositionKey}`;
-      try {
-        if (!localStorage.getItem(adKey)) {
-          window.open(AD_URL, '_blank', 'noopener,noreferrer');
-          localStorage.setItem(adKey, 'true');
-        }
-      } catch (e) {
-        console.error("Não foi possível acessar o localStorage para o anúncio:", e);
+    if (adShownForSessionRef.current) return;
+
+    try {
+      const referrer = document.referrer ? new URL(document.referrer).hostname : '';
+      if (whitelistedDomains.some(domain => referrer.includes(domain))) {
+        console.log("Domain is whitelisted, skipping ad.");
+        adShownForSessionRef.current = true;
+        return;
       }
-      adShownForSessionRef.current = true;
+    } catch (e) {
+      console.error("Error checking referrer for ad:", e);
     }
-  }, [rememberPositionKey]);
+      
+    const adKey = `ad-shown-${rememberPositionKey}`;
+    try {
+      if (!localStorage.getItem(adKey)) {
+        window.open(AD_URL, '_blank', 'noopener,noreferrer');
+        localStorage.setItem(adKey, 'true');
+      }
+    } catch (e) {
+      console.error("Não foi possível acessar o localStorage para o anúncio:", e);
+    }
+    adShownForSessionRef.current = true;
+  }, [rememberPositionKey, whitelistedDomains]);
 
     useEffect(() => {
         const video = videoRef.current;
