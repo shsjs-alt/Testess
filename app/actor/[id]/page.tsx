@@ -1,8 +1,21 @@
+// app/actor/[id]/page.tsx
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Loader2, User2, Film, Tv } from 'lucide-react'
+
+type Credit = {
+  id: number;
+  media_type: "movie" | "tv";
+  title?: string;
+  name?: string;
+  poster_path: string | null;
+  release_date?: string;
+  first_air_date?: string;
+  character?: string;
+  popularity: number;
+};
 
 type Person = {
   id: number
@@ -12,44 +25,71 @@ type Person = {
   birthday: string | null
   place_of_birth: string | null
   combined_credits: {
-    cast: Array<{
-      id: number
-      media_type: "movie" | "tv"
-      title?: string
-      name?: string
-      poster_path: string | null
-      release_date?: string
-      first_air_date?: string
-      character?: string
-      popularity: number
-    }>
+    cast: Credit[]
   }
 }
 
-const API_KEY = "860b66ade580bacae581f4228fad49fc" // <-- CHAVE ATUALIZADA
+const API_KEY = "860b66ade580bacae581f4228fad49fc"
 const API_BASE_URL = "https://api.themoviedb.org/3"
 
-// ... (o resto do arquivo permanece o mesmo)
+// --- NOVA FUNÇÃO DE VERIFICAÇÃO ---
+async function verifyCreditAvailability(item: Credit): Promise<boolean> {
+  const url = item.media_type === 'movie' 
+    ? `/api/stream/movies/${item.id}` 
+    : `/api/stream/series/${item.id}/1/1`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.streams && data.streams.length > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
 export default function ActorDetailPage({ params }: { params: { id: string } }) {
   const { id } = params
   const [loading, setLoading] = useState(true)
   const [person, setPerson] = useState<Person | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [verifiedCredits, setVerifiedCredits] = useState<Credit[]>([]);
+  const [verifyingCredits, setVerifyingCredits] = useState(false);
 
   useEffect(() => {
     let ignore = false
     async function load() {
       setLoading(true)
+      setVerifyingCredits(true);
       setError(null)
       try {
         const res = await fetch(`${API_BASE_URL}/person/${id}?api_key=${API_KEY}&language=pt-BR&append_to_response=combined_credits`)
         if (!res.ok) throw new Error("Falha ao buscar ator.")
         const data: Person = await res.json()
-        if (!ignore) setPerson(data)
+        if (!ignore) {
+            setPerson(data);
+            
+            // Após buscar os dados do ator, inicia a verificação dos créditos
+            const sorted = [...(data.combined_credits?.cast || [])]
+                .sort((a, b) => b.popularity - a.popularity)
+                .slice(0, 60);
+
+            const availabilityChecks = sorted.map(async (credit) => ({
+                ...credit,
+                isAvailable: await verifyCreditAvailability(credit)
+            }));
+            
+            const checkedCredits = await Promise.all(availabilityChecks);
+            if (!ignore) {
+                setVerifiedCredits(checkedCredits.filter(c => c.isAvailable));
+            }
+        }
       } catch (e: any) {
         if (!ignore) setError(e?.message || "Erro desconhecido.")
       } finally {
-        if (!ignore) setLoading(false)
+        if (!ignore) {
+            setLoading(false);
+            setVerifyingCredits(false);
+        }
       }
     }
     load()
@@ -58,10 +98,6 @@ export default function ActorDetailPage({ params }: { params: { id: string } }) 
     }
   }, [id])
 
-  const sortedCredits = useMemo(() => {
-    const credits = person?.combined_credits?.cast || []
-    return [...credits].sort((a, b) => b.popularity - a.popularity).slice(0, 60)
-  }, [person])
 
   if (loading) {
     return (
@@ -118,12 +154,15 @@ export default function ActorDetailPage({ params }: { params: { id: string } }) 
         </section>
 
         <section className="mt-12">
-          <h2 className="mb-4 text-2xl font-bold">Participações populares</h2>
-          {sortedCredits.length === 0 ? (
-            <p className="text-zinc-400">Nenhum crédito encontrado.</p>
+          <div className="flex items-center gap-4 mb-4">
+            <h2 className="text-2xl font-bold">Participações populares</h2>
+            {verifyingCredits && <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />}
+          </div>
+          {verifiedCredits.length === 0 && !verifyingCredits ? (
+            <p className="text-zinc-400">Nenhum crédito disponível encontrado.</p>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-              {sortedCredits.map((c) => {
+              {verifiedCredits.map((c) => {
                 const title = c.title || c.name || "Título desconhecido"
                 const date = c.release_date || c.first_air_date || ""
                 const url = `/${c.media_type}/${c.id}`
