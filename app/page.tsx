@@ -15,31 +15,10 @@ const API_BASE_URL = "https://api.themoviedb.org/3";
 
 type Stats = { movies: string; series: string; episodes: string; };
 
-// --- NOVA FUNÇÃO DE VERIFICAÇÃO ---
-// Esta função verifica se um item de mídia tem um stream disponível.
-async function verifyMediaAvailability(item: MediaItem): Promise<boolean> {
-  // Para séries, verificamos apenas o primeiro episódio da primeira temporada como um indicativo.
-  const url = item.media_type === 'movie' 
-    ? `/api/stream/movies/${item.id}` 
-    : `/api/stream/series/${item.id}/1/1`;
-
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return false;
-
-    const data = await res.json();
-    return data.streams && data.streams.length > 0;
-  } catch (error) {
-    console.error(`Erro ao verificar disponibilidade para ${item.media_type} ${item.id}:`, error);
-    return false;
-  }
-}
-
-
 function ApiDocsSection({ stats }: { stats: Stats }) {
     const [showDocs, setShowDocs] = useState(false);
 
-    // --- CONTEÚDO DA DOCUMENTAÇÃO (PERMANECE O MESMO) ---
+    // --- MUDANÇA: CONTEÚDO DA DOCUMENTAÇÃO ATUALIZADO ---
     const documentationContent = (
       <div className="text-left max-w-4xl mx-auto bg-zinc-900/50 p-6 sm:p-8 rounded-lg border border-zinc-800 backdrop-blur-sm">
         <h2 className="text-3xl font-extrabold text-white text-center mb-2">Como Usar Nossas APIs</h2>
@@ -187,31 +166,17 @@ export default function HomePage() {
   const fetchMedia = useCallback(async (page: number) => {
     setLoading(true);
     try {
-        // 1. Busca a lista do TMDB
         const res = await fetch(`${API_BASE_URL}/trending/all/week?api_key=${API_KEY}&language=pt-BR&page=${page}`);
         if (!res.ok) throw new Error("Falha ao buscar dados do TMDB.");
         
         const data = await res.json();
-        const initialMediaList: MediaItem[] = data.results.filter(
-            (item: any) => (item.media_type === 'movie' || item.media_type === 'tv') && item.poster_path
-        );
+        const validMedia = data.results.filter((item: any) => (item.media_type === 'movie' || item.media_type === 'tv') && item.poster_path);
         
-        // 2. Verifica a disponibilidade
-        const availabilityChecks = initialMediaList.map(async (item) => {
-          const isAvailable = await verifyMediaAvailability(item);
-          return { ...item, isAvailable };
-        });
-        
-        const resultsWithAvailability = await Promise.all(availabilityChecks);
-        
-        // 3. Filtra para mostrar apenas os disponíveis
-        const availableMedia = resultsWithAvailability.filter(item => item.isAvailable);
-        
-        setMedia(availableMedia);
+        setMedia(validMedia);
         setTotalPages(data.total_pages > 500 ? 500 : data.total_pages);
 
-        if (page === 1 && availableMedia.length > 0) {
-            const itemsWithBackdrop = availableMedia.filter((item: MediaItem) => item.backdrop_path);
+        if (page === 1 && validMedia.length > 0) {
+            const itemsWithBackdrop = validMedia.filter((item: MediaItem) => item.backdrop_path);
             if (itemsWithBackdrop.length > 0) {
                 const randomItem = itemsWithBackdrop[Math.floor(Math.random() * itemsWithBackdrop.length)];
                 setHeroBackdrop(randomItem.backdrop_path);

@@ -11,22 +11,6 @@ import { MediaCard, type MediaItem } from "@/components/media-card"
 const API_KEY = "860b66ade580bacae581f4228fad49fc";
 const API_BASE_URL = "https://api.themoviedb.org/3";
 
-// --- NOVA FUNÇÃO DE VERIFICAÇÃO ---
-async function verifyMediaAvailability(item: MediaItem): Promise<boolean> {
-  const url = item.media_type === 'movie' 
-    ? `/api/stream/movies/${item.id}` 
-    : `/api/stream/series/${item.id}/1/1`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data.streams && data.streams.length > 0;
-  } catch (error) {
-    console.error(`Erro ao verificar disponibilidade para ${item.media_type} ${item.id}:`, error);
-    return false;
-  }
-}
-
 function SearchResults() {
   const searchParams = useSearchParams()
   const query = searchParams.get('query')
@@ -57,21 +41,13 @@ function SearchResults() {
         
         const data = await res.json();
         
-        const initialMediaList: MediaItem[] = data.results.filter(
+        // Filtra os resultados para incluir apenas filmes e séries que tenham um pôster
+        const validMedia = data.results.filter(
           (item: any) => (item.media_type === 'movie' || item.media_type === 'tv') && item.poster_path
         );
-        
-        // Verifica a disponibilidade
-        const availabilityChecks = initialMediaList.map(async (item) => ({
-          ...item,
-          isAvailable: await verifyMediaAvailability(item),
-        }));
-        
-        const resultsWithAvailability = await Promise.all(availabilityChecks);
-        const availableMedia = resultsWithAvailability.filter(item => item.isAvailable);
 
-        setResults(availableMedia);
-        setTotalPages(data.total_pages > 500 ? 500 : data.total_pages);
+        setResults(validMedia);
+        setTotalPages(data.total_pages > 500 ? 500 : data.total_pages); // TMDB limita os resultados a 500 páginas
       } catch (error) {
         console.error("Erro ao buscar:", error);
         setResults([]);
@@ -125,7 +101,7 @@ function SearchResults() {
                       ))}
                     </div>
                   ) : (
-                    query && <p className="pt-16 text-center text-zinc-400">Nenhum resultado disponível encontrado para "{query}".</p>
+                    query && <p className="pt-16 text-center text-zinc-400">Nenhum resultado encontrado para "{query}".</p>
                   )}
                   {totalPages > 1 && (
                     <div className="mt-8 flex justify-center">
@@ -148,6 +124,7 @@ function SearchResults() {
 
 export default function SearchPage() {
   return (
+    // O Suspense garante que a página não trave enquanto o Next.js carrega os parâmetros da URL
     <Suspense fallback={
         <div className="min-h-screen bg-zinc-950 text-zinc-50 flex items-center justify-center">
             <Loader2 className="h-10 w-10 animate-spin text-zinc-500" />
