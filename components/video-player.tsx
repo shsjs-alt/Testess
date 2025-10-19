@@ -47,10 +47,10 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
-  const adShownForSessionRef = useRef(false); // Ref para controlar o anúncio na sessão atual
+  const adShownForSessionRef = useRef(false);
 
   const [currentSource, setCurrentSource] = useState(sources[0]);
-  const [isPlaying, setIsPlaying] = useState(false); // Inicia sempre pausado
+  const [isPlaying, setIsPlaying] = useState(false);
   const [showControls, setShowControls] = useState(true)
 
   const [currentTime, setCurrentTime] = useState(0)
@@ -79,7 +79,6 @@ export default function VideoPlayer({
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
@@ -92,6 +91,22 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // --- LÓGICA DO ANÚNCIO CENTRALIZADA ---
+  const triggerAd = useCallback(() => {
+    if (!adShownForSessionRef.current) {
+      const adKey = `ad-shown-${rememberPositionKey}`;
+      try {
+        if (!localStorage.getItem(adKey)) {
+          window.open(AD_URL, '_blank', 'noopener,noreferrer');
+          localStorage.setItem(adKey, 'true');
+        }
+      } catch (e) {
+        console.error("Não foi possível acessar o localStorage para o anúncio:", e);
+      }
+      adShownForSessionRef.current = true;
+    }
+  }, [rememberPositionKey]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -308,18 +323,8 @@ export default function VideoPlayer({
     const v = videoRef.current;
     if (!v) return;
 
-    // Lógica do anúncio no primeiro play
-    if (!adShownForSessionRef.current && v.paused) {
-        const adKey = `ad-shown-${rememberPositionKey}`;
-        try {
-            if (!localStorage.getItem(adKey)) {
-                window.open(AD_URL, '_blank', 'noopener,noreferrer');
-                localStorage.setItem(adKey, 'true');
-            }
-        } catch (e) {
-            console.error("Não foi possível acessar o localStorage para o anúncio:", e);
-        }
-        adShownForSessionRef.current = true; // Marca que o anúncio foi verificado nesta sessão
+    if (v.paused) {
+        triggerAd();
     }
 
     if (v.paused) {
@@ -327,7 +332,7 @@ export default function VideoPlayer({
     } else {
         v.pause();
     }
-  }, [rememberPositionKey]);
+  }, [triggerAd]);
 
   const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ('ontouchstart' in window) return;
@@ -575,6 +580,7 @@ export default function VideoPlayer({
   const handleContinue = () => {
     setShowContinueWatching(false)
     if (videoRef.current) {
+      triggerAd(); // Aciona o anúncio
       videoRef.current.play()
     }
   }
@@ -582,6 +588,7 @@ export default function VideoPlayer({
   const handleRestart = () => {
     setShowContinueWatching(false)
     if (videoRef.current) {
+      triggerAd(); // Aciona o anúncio
       videoRef.current.currentTime = 0
       videoRef.current.play()
     }
