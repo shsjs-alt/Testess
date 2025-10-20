@@ -30,8 +30,6 @@ type VideoPlayerProps = {
   onNextEpisode?: () => void
 }
 
-const AD_URL = "https://otieu.com/4/10063432";
-
 export default function VideoPlayer({
   sources,
   title,
@@ -47,7 +45,6 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
   const continueWatchingDialogRef = useRef<HTMLDivElement>(null)
-  const adShownForSessionRef = useRef(false);
 
   const [currentSource, setCurrentSource] = useState(sources[0]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -91,22 +88,6 @@ export default function VideoPlayer({
   const spacebarDownTimer = useRef<NodeJS.Timeout | null>(null);
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // --- LÓGICA DO ANÚNCIO CENTRALIZADA ---
-  const triggerAd = useCallback(() => {
-    if (!adShownForSessionRef.current) {
-      const adKey = `ad-shown-${rememberPositionKey}`;
-      try {
-        if (!localStorage.getItem(adKey)) {
-          window.open(AD_URL, '_blank', 'noopener,noreferrer');
-          localStorage.setItem(adKey, 'true');
-        }
-      } catch (e) {
-        console.error("Não foi possível acessar o localStorage para o anúncio:", e);
-      }
-      adShownForSessionRef.current = true;
-    }
-  }, [rememberPositionKey]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -324,15 +305,11 @@ export default function VideoPlayer({
     if (!v) return;
 
     if (v.paused) {
-        triggerAd();
-    }
-
-    if (v.paused) {
         v.play().catch(() => handleError());
     } else {
         v.pause();
     }
-  }, [triggerAd]);
+  }, []);
 
   const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ('ontouchstart' in window) return;
@@ -580,7 +557,6 @@ export default function VideoPlayer({
   const handleContinue = () => {
     setShowContinueWatching(false)
     if (videoRef.current) {
-      triggerAd(); // Aciona o anúncio
       videoRef.current.play()
     }
   }
@@ -588,7 +564,6 @@ export default function VideoPlayer({
   const handleRestart = () => {
     setShowContinueWatching(false)
     if (videoRef.current) {
-      triggerAd(); // Aciona o anúncio
       videoRef.current.currentTime = 0
       videoRef.current.play()
     }
