@@ -2,15 +2,13 @@
 "use client";
 
 import { useParams } from 'next/navigation';
-import { Loader2, Clapperboard } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-
 import VideoPlayer from '@/components/video-player';
+import { PlayerOverlay } from '@/components/player-overley';
 
 type Stream = {
   url: string;
   name: string;
-  playerType: string;
   thumbnailUrl?: string;
 }
 
@@ -28,13 +26,10 @@ export default function MovieEmbedPage() {
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPlayer, setShowPlayer] = useState(false);
 
   useEffect(() => {
-    if (!tmdbId) {
-      setError("ID do filme não fornecido.");
-      setLoading(false);
-      return;
-    }
+    if (!tmdbId) return;
 
     const fetchMovieData = async () => {
       setLoading(true);
@@ -42,17 +37,19 @@ export default function MovieEmbedPage() {
       try {
         const res = await fetch(`/api/stream/movies/${tmdbId}`);
         if (!res.ok) {
-          throw new Error("Não foi possível obter o link de streaming.");
+          const errorData = await res.json();
+          throw new Error(errorData.error || "Filme não encontrado.");
         }
         
         const data: StreamInfo = await res.json();
+
         if (data.streams && data.streams.length > 0 && data.streams[0].url) {
           setStreamInfo(data);
         } else {
           setError("Nenhum link de streaming disponível para este filme.");
         }
       } catch (err: any) {
-        setError(err.message || "Ocorreu um erro ao carregar o filme.");
+        setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -61,33 +58,11 @@ export default function MovieEmbedPage() {
     fetchMovieData();
   }, [tmdbId]);
 
-  if (loading) {
-    return (
-      <main className="w-screen h-screen flex items-center justify-center bg-black">
-        <Loader2 className="w-12 h-12 animate-spin text-white" />
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
-        <Clapperboard className="w-16 h-16 text-zinc-700 mb-4" />
-        <h2 className="text-xl font-bold mb-2">Erro ao Carregar</h2>
-        <p className="text-zinc-400">{error}</p>
-      </main>
-    );
-  }
-
-  if (!streamInfo) return null;
-
-  const customStreams = streamInfo.streams.filter(s => s.playerType === 'custom');
-
-  if (customStreams.length > 0) {
+  if (showPlayer && streamInfo) {
     return (
       <main className="w-screen h-screen relative bg-black">
         <VideoPlayer
-          sources={customStreams.map(s => ({ url: s.url, name: s.name, thumbnailUrl: s.thumbnailUrl }))}
+          sources={streamInfo.streams}
           title={streamInfo.title || 'Filme'}
           downloadUrl={`/download/movies/${tmdbId}`}
           rememberPosition={true}
@@ -96,26 +71,25 @@ export default function MovieEmbedPage() {
       </main>
     );
   }
-  
-  const iframeStream = streamInfo.streams.find(s => s.playerType === 'iframe');
-  if (iframeStream) {
-    return (
-      <main className="w-screen h-screen relative bg-black">
-        <iframe
-          src={iframeStream.url}
-          className="w-full h-full border-0"
-          allow="autoplay; fullscreen"
-          allowFullScreen
-        ></iframe>
-      </main>
-    );
-  }
 
   return (
-      <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
-        <Clapperboard className="w-16 h-16 text-zinc-700 mb-4" />
-        <h2 className="text-xl font-bold mb-2">Player Incompatível</h2>
-        <p className="text-zinc-400">O tipo de player para este conteúdo não é suportado.</p>
-      </main>
+    <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
+        <PlayerOverlay
+            title={streamInfo?.title || ''}
+            originalTitle={streamInfo?.originalTitle || ''}
+            backgroundUrl={streamInfo?.backdropPath || null}
+            isLoading={loading}
+            onPlay={() => {
+                if (!loading && !error) {
+                    setShowPlayer(true);
+                }
+            }}
+        />
+        {error && !loading && (
+             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
+                <p className="text-zinc-400">{error}</p>
+            </div>
+        )}
+    </main>
   );
 }
