@@ -8,7 +8,7 @@ import { LayoutWrapper } from "@/components/layout-wrapper"
 export const metadata: Metadata = {
   title: "PrimeVicio - API,EMBED DE FILMES E SÉRIES GRÁTIS",
   description: "API DE EMBED COM FILMES E SÉRIES com players rápidos e conteúdo atualizado e Totalmente Gratuito.",
-  icons: "https://i.ibb.co/xqMzw3J1/primevicioicon.png", // Ícone da aba do navegador adicionado aqui
+  icons: "https://i.ibb.co/rKhmNPtV/primevicio.png",
 }
 
 export default function RootLayout({
@@ -19,6 +19,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="dark">
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, orientation=portrait" />
         <meta name="google-site-verification" content="q5GnYgfSLz8RBSXp5gg13u_GOBloxYaSi8gSLA3QhPs" />
         <script src="https://cdn.jsdelivr.net/npm/disable-devtool@latest"></script>
         <script

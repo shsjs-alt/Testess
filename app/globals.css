@@ -125,3 +125,14 @@ html:hover::-webkit-scrollbar-thumb {
     text-shadow: 0 2px 5px rgb(0 0 0 / 0.6);
   }
 }
+
+/* Adicionado para correções no player */
+.video-player-container:fullscreen {
+  width: 100vw;
+  height: 100vh;
+}
+
+.video-player-container:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+}

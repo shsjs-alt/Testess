@@ -586,7 +586,7 @@ export default function VideoPlayer({
       <div
         ref={containerRef}
         className={cn(
-          "fixed inset-0 w-full h-full bg-black overflow-hidden group select-none",
+          "fixed inset-0 w-full h-full bg-black overflow-hidden group select-none video-player-container",
           isPlaying && !showControls && !showNextEpisodeOverlay && "cursor-none"
         )}
         onDoubleClick={e => e.preventDefault()}
@@ -759,7 +759,7 @@ export default function VideoPlayer({
           data-controls
           style={{ transform: 'translateZ(0)' }}
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-4 md:bottom-6 z-10 px-2 md:px-3 transition-opacity duration-300",
+            "pointer-events-none absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-6 md:px-3 transition-opacity duration-300",
             "bg-gradient-to-t from-black/50 to-transparent pt-10",
             showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
           )}
@@ -809,7 +809,7 @@ export default function VideoPlayer({
             </div>
           </div>
 
-          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-[#212121] px-1 py-1 md:px-2 md:py-2">
+          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-transparent px-1 py-1 md:px-2 md:py-2">
             <div className="flex items-center gap-1 md:gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
