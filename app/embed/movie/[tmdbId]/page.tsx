@@ -4,7 +4,7 @@
 import { useParams } from 'next/navigation';
 import React, { useEffect, useState } from 'react';
 import VideoPlayer from '@/components/video-player';
-import { PlayerOverlay } from '@/components/player-overley';
+import { Loader2 } from 'lucide-react';
 
 type Stream = {
   url: string;
@@ -15,8 +15,6 @@ type Stream = {
 type StreamInfo = {
   streams: Stream[];
   title: string | null;
-  originalTitle: string | null;
-  backdropPath: string | null;
 };
 
 export default function MovieEmbedPage() {
@@ -26,7 +24,6 @@ export default function MovieEmbedPage() {
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showPlayer, setShowPlayer] = useState(false);
 
   useEffect(() => {
     if (!tmdbId) return;
@@ -58,7 +55,26 @@ export default function MovieEmbedPage() {
     fetchMovieData();
   }, [tmdbId]);
 
-  if (showPlayer && streamInfo) {
+  // Se estiver carregando, mostra uma animação simples
+  if (loading) {
+    return (
+      <main className="w-screen h-screen flex items-center justify-center bg-black">
+        <Loader2 className="w-8 h-8 animate-spin text-white" />
+      </main>
+    );
+  }
+
+  // Se deu erro, mostra a mensagem de erro
+  if (error) {
+    return (
+      <main className="w-screen h-screen flex items-center justify-center bg-black text-center p-4">
+        <p className="text-zinc-400">{error}</p>
+      </main>
+    );
+  }
+
+  // Se encontrou as informações, renderiza o player diretamente
+  if (streamInfo) {
     return (
       <main className="w-screen h-screen relative bg-black">
         <VideoPlayer
@@ -72,24 +88,10 @@ export default function MovieEmbedPage() {
     );
   }
 
+  // Fallback caso algo inesperado aconteça
   return (
-    <main className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 text-center">
-        <PlayerOverlay
-            title={streamInfo?.title || ''}
-            originalTitle={streamInfo?.originalTitle || ''}
-            backgroundUrl={streamInfo?.backdropPath || null}
-            isLoading={loading}
-            onPlay={() => {
-                if (!loading && !error) {
-                    setShowPlayer(true);
-                }
-            }}
-        />
-        {error && !loading && (
-             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
-                <p className="text-zinc-400">{error}</p>
-            </div>
-        )}
+    <main className="w-screen h-screen flex items-center justify-center bg-black">
+      <p className="text-zinc-400">Não foi possível carregar o player.</p>
     </main>
   );
 }
