@@ -79,8 +79,6 @@ export default function VideoPlayer({
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const [whitelistedDomains, setWhitelistedDomains] = useState<string[]>([]);
-
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
@@ -94,57 +92,21 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    const fetchWhitelist = async () => {
-      try {
-        const response = await fetch('/api/whitelist');
-        if (response.ok) {
-          const data = await response.json();
-          console.log("Whitelist carregada:", data.domains);
-          setWhitelistedDomains(data.domains || []);
-        }
-      } catch (error) {
-        console.error("Falha ao carregar a whitelist", error);
-      }
-    };
-    fetchWhitelist();
-  }, []);
-
-  // --- LÓGICA DO ANÚNCIO CORRIGIDA ---
+  // --- LÓGICA DO ANÚNCIO CENTRALIZADA ---
   const triggerAd = useCallback(() => {
-    if (adShownForSessionRef.current) return;
-
-    try {
-      if (document.referrer) {
-        // Sanitiza o hostname do referenciador removendo 'www.' para uma comparação exata e consistente.
-        const referrerHostname = new URL(document.referrer).hostname.replace(/^www\./, '');
-        
-        console.log(`Verificando referenciador: "${referrerHostname}" contra a whitelist:`, whitelistedDomains);
-
-        // Usa uma correspondência exata para maior confiabilidade.
-        if (whitelistedDomains.some(domain => referrerHostname === domain)) {
-            console.log(`Domínio "${referrerHostname}" está na whitelist. Anúncio pulado.`);
-            adShownForSessionRef.current = true;
-            return; // Pula o anúncio
+    if (!adShownForSessionRef.current) {
+      const adKey = `ad-shown-${rememberPositionKey}`;
+      try {
+        if (!localStorage.getItem(adKey)) {
+          window.open(AD_URL, '_blank', 'noopener,noreferrer');
+          localStorage.setItem(adKey, 'true');
         }
+      } catch (e) {
+        console.error("Não foi possível acessar o localStorage para o anúncio:", e);
       }
-    } catch (e) {
-      console.error("Erro ao verificar o referenciador para o anúncio:", e);
+      adShownForSessionRef.current = true;
     }
-      
-    console.log("Domínio não está na whitelist ou não há referenciador. Acionando anúncio.");
-    const adKey = `ad-shown-${rememberPositionKey}`;
-    try {
-      if (!localStorage.getItem(adKey)) {
-        window.open(AD_URL, '_blank', 'noopener,noreferrer');
-        localStorage.setItem(adKey, 'true');
-      }
-    } catch (e) {
-      console.error("Não foi possível acessar o localStorage para o anúncio:", e);
-    }
-    adShownForSessionRef.current = true;
-  }, [rememberPositionKey, whitelistedDomains]);
-
+  }, [rememberPositionKey]);
 
     useEffect(() => {
         const video = videoRef.current;
