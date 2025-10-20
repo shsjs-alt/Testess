@@ -100,30 +100,39 @@ export default function VideoPlayer({
         const response = await fetch('/api/whitelist');
         if (response.ok) {
           const data = await response.json();
+          console.log("Whitelist carregada:", data.domains);
           setWhitelistedDomains(data.domains || []);
         }
       } catch (error) {
-        console.error("Failed to fetch whitelist", error);
+        console.error("Falha ao carregar a whitelist", error);
       }
     };
     fetchWhitelist();
   }, []);
 
-  // --- LÓGICA DO ANÚNCIO CENTRALIZADA ---
+  // --- LÓGICA DO ANÚNCIO CORRIGIDA ---
   const triggerAd = useCallback(() => {
     if (adShownForSessionRef.current) return;
 
     try {
-      const referrer = document.referrer ? new URL(document.referrer).hostname : '';
-      if (whitelistedDomains.some(domain => referrer.includes(domain))) {
-        console.log("Domain is whitelisted, skipping ad.");
-        adShownForSessionRef.current = true;
-        return;
+      if (document.referrer) {
+        // Sanitiza o hostname do referenciador removendo 'www.' para uma comparação exata e consistente.
+        const referrerHostname = new URL(document.referrer).hostname.replace(/^www\./, '');
+        
+        console.log(`Verificando referenciador: "${referrerHostname}" contra a whitelist:`, whitelistedDomains);
+
+        // Usa uma correspondência exata para maior confiabilidade.
+        if (whitelistedDomains.some(domain => referrerHostname === domain)) {
+            console.log(`Domínio "${referrerHostname}" está na whitelist. Anúncio pulado.`);
+            adShownForSessionRef.current = true;
+            return; // Pula o anúncio
+        }
       }
     } catch (e) {
-      console.error("Error checking referrer for ad:", e);
+      console.error("Erro ao verificar o referenciador para o anúncio:", e);
     }
       
+    console.log("Domínio não está na whitelist ou não há referenciador. Acionando anúncio.");
     const adKey = `ad-shown-${rememberPositionKey}`;
     try {
       if (!localStorage.getItem(adKey)) {
@@ -135,6 +144,7 @@ export default function VideoPlayer({
     }
     adShownForSessionRef.current = true;
   }, [rememberPositionKey, whitelistedDomains]);
+
 
     useEffect(() => {
         const video = videoRef.current;
