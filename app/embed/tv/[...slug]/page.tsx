@@ -24,14 +24,17 @@ export default function TvEmbedPage() {
 
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); // MODIFICAÇÃO: Estado de loading adicionado
 
   useEffect(() => {
     if (!tmdbId || !season || !episode) {
       setError("Informações inválidas para carregar a série.");
+      setLoading(false);
       return;
     }
 
     const fetchTvData = async () => {
+      setLoading(true); // Inicia o carregamento
       setError(null);
       try {
         const res = await fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
@@ -49,6 +52,8 @@ export default function TvEmbedPage() {
         }
       } catch (err: any) {
         setError(err.message);
+      } finally {
+        setLoading(false); // Finaliza o carregamento
       }
     };
 
@@ -63,14 +68,19 @@ export default function TvEmbedPage() {
   };
   
   return (
-    <main className="w-screen h-screen relative bg-black">
-      {/* MODIFICAÇÃO: O spinner de carregamento da página foi removido. */}
-      {error && (
-        <div className="w-full h-full flex items-center justify-center text-center p-4">
+    <main className="w-screen h-screen flex items-center justify-center bg-black">
+      {/* MODIFICAÇÃO: Lógica de renderização com GIF de loading */}
+      {loading && (
+          <img src="https://i.ibb.co/fVcZxsvM/1020.gif" alt="Carregando..." className="w-16 h-16" />
+      )}
+
+      {!loading && error && (
+        <div className="text-center p-4">
           <p className="text-zinc-400">{error}</p>
         </div>
       )}
-      {streamInfo && (
+      
+      {!loading && streamInfo && (
         <VideoPlayer
           sources={streamInfo.streams}
           title={streamInfo.title || `S${season} E${episode}`}

@@ -87,7 +87,6 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // MODIFICAÇÃO: Lógica de HLS.js removida. Agora trata tudo como link direto.
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentSource?.url) return;
@@ -224,7 +223,6 @@ export default function VideoPlayer({
     }
   }
   
-  // MODIFICAÇÃO: Simplificada para links diretos
   const handleError = () => {
     setIsLoading(false)
     setIsBuffering(false)
@@ -743,8 +741,6 @@ export default function VideoPlayer({
           style={{ transform: 'translateZ(0)' }}
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-6 md:px-3 transition-opacity duration-300",
-            // MODIFICAÇÃO: Ajustado o gradiente para ser mais escuro.
-            "bg-gradient-to-t from-black/80 to-transparent pt-10",
             showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
           )}
         >
@@ -793,7 +789,8 @@ export default function VideoPlayer({
             </div>
           </div>
 
-          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-transparent px-1 py-1 md:px-2 md:py-2">
+          {/* MODIFICAÇÃO: Barra de controles com fundo cinza sólido */}
+          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-zinc-900/90 px-1 py-1 md:px-2 md:py-2">
             <div className="flex items-center gap-1 md:gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
