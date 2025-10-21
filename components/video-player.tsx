@@ -115,64 +115,73 @@ export default function VideoPlayer({
   const adInterval = 2 * 60 * 1000; // 2 minutos
   const lastAdTimeRef = useRef<number | null>(null);
 
-
+  // ✅ CORREÇÃO: Lógica de detecção simplificada. Agora só verifica adblocker de elementos.
+  // A detecção de sandbox será feita de forma ativa ao tentar abrir o anúncio.
   useEffect(() => {
     if (typeof window === 'undefined') {
-      setChecking(false);
-      return;
-    }
-    
-    if (window.self !== window.top) {
-      setIsSandboxed(true);
-      setChecking(false);
-      return;
+        setChecking(false);
+        return;
     }
 
     const adBlockerCheck = () => {
-      const bait = document.createElement('div');
-      bait.innerHTML = '&nbsp;';
-      bait.className = 'pub_300x250 pub_300x250m pub_728x90 text-ad text-ads text-ad-text ad-text ad-banner';
-      bait.setAttribute('aria-hidden', 'true');
-      bait.style.position = 'absolute';
-      bait.style.top = '-9999px';
-      bait.style.left = '-9999px';
-      bait.style.width = '1px';
-      bait.style.height = '1px';
-      document.body.appendChild(bait);
+        const bait = document.createElement('div');
+        bait.innerHTML = '&nbsp;';
+        bait.className = 'pub_300x250 pub_300x250m pub_728x90 text-ad text-ads text-ad-text ad-text ad-banner';
+        bait.setAttribute('aria-hidden', 'true');
+        bait.style.position = 'absolute';
+        bait.style.top = '-9999px';
+        bait.style.left = '-9999px';
+        bait.style.width = '1px';
+        bait.style.height = '1px';
+        document.body.appendChild(bait);
 
-      requestAnimationFrame(() => {
-         if (bait.offsetHeight === 0 || window.getComputedStyle(bait).display === 'none' || window.getComputedStyle(bait).visibility === 'hidden') {
-             setAdBlockerDetected(true);
-         }
-         document.body.removeChild(bait);
-         setChecking(false);
-      });
+        requestAnimationFrame(() => {
+            if (bait.offsetHeight === 0 || window.getComputedStyle(bait).display === 'none' || window.getComputedStyle(bait).visibility === 'hidden') {
+                setAdBlockerDetected(true);
+            }
+            document.body.removeChild(bait);
+            setChecking(false);
+        });
     };
-
     setTimeout(adBlockerCheck, 100);
   }, []);
 
+  // ✅ CORREÇÃO: Função de anúncio agora retorna se o pop-up foi bloqueado
   const triggerAd = useCallback(() => {
-    window.open(adUrl, "_blank");
+    const adWindow = window.open(adUrl, "_blank");
+    if (!adWindow || adWindow.closed || typeof adWindow.closed === 'undefined') {
+        // Pop-up foi bloqueado pelo navegador ou por um sandbox
+        return false;
+    }
     lastAdTimeRef.current = Date.now();
     if (videoRef.current && !videoRef.current.paused) {
       videoRef.current.pause();
     }
+    return true;
   }, [adUrl]);
   
+  // ✅ CORREÇÃO: O play inicial agora depende do sucesso do anúncio
   const handleInitialPlay = () => {
-    triggerAd();
-    setIsPlayerActive(true);
+    const adWasSuccessful = triggerAd();
+    if (adWasSuccessful) {
+        setIsPlayerActive(true); // Se o anúncio abriu, ativa o player
+    } else {
+        setIsSandboxed(true); // Se foi bloqueado, mostra a mensagem de Acesso Restrito
+        setChecking(false);
+    }
   };
   
   const handlePlayerAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('[data-controls]')) return;
   
     if (lastAdTimeRef.current && Date.now() - lastAdTimeRef.current > adInterval) {
-      triggerAd();
-    } else {
-      togglePlay();
+      const adWasSuccessful = triggerAd();
+      if (!adWasSuccessful) {
+          setIsSandboxed(true); // Mostra a mensagem se o anúncio for bloqueado depois
+          return;
+      }
     }
+    togglePlay();
   };
   
   useEffect(() => {
@@ -435,7 +444,6 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    // Fallback para iOS
     if (video.webkitEnterFullscreen) {
       video.webkitEnterFullscreen();
       return;
@@ -447,7 +455,6 @@ export default function VideoPlayer({
     try {
       if (!document.fullscreenElement) {
         await container.requestFullscreen();
-        // ✅ CORREÇÃO 1: Adicionado try...catch para ignorar o erro em desktops.
         try {
           if (screen.orientation && typeof screen.orientation.lock === 'function') {
             await screen.orientation.lock('landscape');
@@ -468,7 +475,6 @@ export default function VideoPlayer({
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
       if (!isCurrentlyFullscreen) {
-        // ✅ CORREÇÃO 1: Adicionado try...catch para ignorar o erro em desktops.
         try {
           if (screen.orientation && typeof screen.orientation.unlock === 'function') {
             screen.orientation.unlock();
@@ -913,15 +919,14 @@ export default function VideoPlayer({
             style={{ transform: 'translateZ(0)' }}
             className={cn(
                 "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-6 md:px-3 transition-opacity duration-300",
-                // ✅ CORREÇÃO 2: Adicionado 'invisible' para garantir que os controles fiquem ocultos.
-                (showControls && !showNextEpisodeOverlay) ? "opacity-100 visible" : "opacity-0 invisible",
+                (showControls && !showNextEpisodeOverlay) ? "opacity-100 visible pointer-events-auto" : "opacity-0 invisible pointer-events-none",
             )}
             >
             <div
                 ref={progressWrapRef}
                 onMouseMove={onProgressMouseMove}
                 onMouseLeave={onProgressLeave}
-                className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
+                className="group/progress relative mb-3 cursor-pointer"
             >
                 <div
                     className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10"
@@ -938,7 +943,7 @@ export default function VideoPlayer({
                                 const video = thumbnailVideoRef.current;
                                 if (ctx && video.videoWidth > 0 && video.readyState >= 2) {
                                   const aspectRatio = video.videoWidth / video.videoHeight;
-                                  canvasRef.width = 144; // 16 * 9
+                                  canvasRef.width = 144;
                                   canvasRef.height = 144 / aspectRatio;
                                   ctx.drawImage(video, 0, 0, canvasRef.width, canvasRef.height);
                                 }
@@ -957,7 +962,7 @@ export default function VideoPlayer({
                 </div>
             </div>
 
-            <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-zinc-900 px-1 py-2 md:px-2 md:py-3">
+            <div className="flex items-center justify-between rounded-lg bg-zinc-900 px-1 py-2 md:px-2 md:py-3">
                 <div className="flex items-center gap-1 md:gap-2">
                     <Tooltip>
                         <TooltipTrigger asChild>
