@@ -69,9 +69,9 @@ export default function TvEmbedPage() {
   
   return (
     <main className="w-screen h-screen flex items-center justify-center bg-black">
-      {/* MODIFICAÇÃO: Aumentado o tamanho do GIF de loading */}
+      {/* MODIFICAÇÃO: Tamanho do GIF aumentado para 64 */}
       {loading && (
-          <img src="https://i.ibb.co/fVcZxsvM/1020.gif" alt="Carregando..." className="w-40 h-40" />
+          <img src="https://i.ibb.co/fVcZxsvM/1020.gif" alt="Carregando..." className="w-64 h-64" />
       )}
 
       {!loading && error && (
