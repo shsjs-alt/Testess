@@ -24,7 +24,7 @@ export default function TvEmbedPage() {
 
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true); // MODIFICAÇÃO: Estado de loading adicionado
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!tmdbId || !season || !episode) {
@@ -34,7 +34,7 @@ export default function TvEmbedPage() {
     }
 
     const fetchTvData = async () => {
-      setLoading(true); // Inicia o carregamento
+      setLoading(true);
       setError(null);
       try {
         const res = await fetch(`/api/stream/series/${tmdbId}/${season}/${episode}`);
@@ -53,7 +53,7 @@ export default function TvEmbedPage() {
       } catch (err: any) {
         setError(err.message);
       } finally {
-        setLoading(false); // Finaliza o carregamento
+        setLoading(false);
       }
     };
 
@@ -69,9 +69,9 @@ export default function TvEmbedPage() {
   
   return (
     <main className="w-screen h-screen flex items-center justify-center bg-black">
-      {/* MODIFICAÇÃO: Lógica de renderização com GIF de loading */}
+      {/* MODIFICAÇÃO: Aumentado o tamanho do GIF de loading */}
       {loading && (
-          <img src="https://i.ibb.co/fVcZxsvM/1020.gif" alt="Carregando..." className="w-16 h-16" />
+          <img src="https://i.ibb.co/fVcZxsvM/1020.gif" alt="Carregando..." className="w-40 h-40" />
       )}
 
       {!loading && error && (
