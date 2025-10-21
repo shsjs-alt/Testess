@@ -74,6 +74,10 @@ export default function VideoPlayer({
   
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  // MODIFICAÇÃO: Novos estados para controlar a primeira interação e o anúncio
+  const [adTriggered, setAdTriggered] = useState(false);
+  const [playerInteracted, setPlayerInteracted] = useState(false);
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
@@ -88,30 +92,25 @@ export default function VideoPlayer({
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const adUrl = "https://otieu.com/4/10070814";
-  const adInterval = 2 * 60 * 1000; // 2 minutes in milliseconds
-  const lastAdTimeRef = useRef<number | null>(null);
+  const adInterval = 2 * 60 * 1000; // 2 minutos em milliseconds
 
-  const openAd = () => {
+  const openAd = useCallback(() => {
     window.open(adUrl, "_blank");
-    lastAdTimeRef.current = Date.now();
-  };
+  }, [adUrl]);
 
-  const handlePlayerClick = () => {
-    if (lastAdTimeRef.current === null) {
-      openAd();
-    }
-  };
-
+  // MODIFICAÇÃO: Lógica de anúncio de intervalo agora depende do primeiro anúncio ter sido acionado
   useEffect(() => {
+    if (!adTriggered) return;
+
     const interval = setInterval(() => {
-      if (isPlaying && lastAdTimeRef.current !== null && Date.now() - lastAdTimeRef.current >= adInterval) {
+      if (isPlaying) {
         videoRef.current?.pause();
         openAd();
       }
-    }, 1000);
+    }, adInterval);
 
     return () => clearInterval(interval);
-  }, [isPlaying, adInterval]);
+  }, [isPlaying, adTriggered, adInterval, openAd]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -191,21 +190,22 @@ export default function VideoPlayer({
   }, [isPlaying]);
 
   const resetControlsTimeout = useCallback(() => {
+    if (!playerInteracted) return;
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
     setShowControls(true);
     controlsTimeoutRef.current = setTimeout(hideControls, 3500);
-  }, [hideControls]);
+  }, [hideControls, playerInteracted]);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (container) {
+    if (container && playerInteracted) {
       container.addEventListener("mousemove", resetControlsTimeout);
       container.addEventListener("mouseleave", hideControls);
       container.addEventListener("touchstart", resetControlsTimeout, { passive: true });
     }
-    resetControlsTimeout();
+    if(playerInteracted) resetControlsTimeout();
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       if (container) {
@@ -214,7 +214,7 @@ export default function VideoPlayer({
         container.removeEventListener("touchstart", resetControlsTimeout);
       }
     };
-  }, [resetControlsTimeout, hideControls]);
+  }, [resetControlsTimeout, hideControls, playerInteracted]);
   
   useEffect(() => {
     if (!isSettingsOpen) {
@@ -317,11 +317,31 @@ export default function VideoPlayer({
         v.pause();
     }
   }, []);
+  
+  // MODIFICAÇÃO: Nova função para lidar com a primeira interação
+  const handleFirstInteraction = useCallback(() => {
+    if (!playerInteracted) {
+      setPlayerInteracted(true);
+      setShowControls(true);
+    }
+    
+    if (!adTriggered) {
+      openAd();
+      setAdTriggered(true);
+    }
+
+    togglePlay();
+  }, [playerInteracted, adTriggered, openAd, togglePlay]);
 
   const handleMainClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ('ontouchstart' in window) return;
     if ((e.target as HTMLElement).closest('[data-controls]')) return;
-    togglePlay();
+    
+    if (!playerInteracted) {
+      handleFirstInteraction();
+    } else {
+      togglePlay();
+    }
   };
 
   const seek = useCallback((amount: number) => {
@@ -457,6 +477,7 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!playerInteracted) return;
       const activeElement = document.activeElement;
       if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.getAttribute("role") === "slider")) return;
   
@@ -510,7 +531,7 @@ export default function VideoPlayer({
       window.removeEventListener("keyup", onKeyUp);
       if (spacebarDownTimer.current) clearTimeout(spacebarDownTimer.current);
     };
-  }, [volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying]);
+  }, [playerInteracted, volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying]);
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration || !progressWrapRef.current) return;
@@ -518,8 +539,11 @@ export default function VideoPlayer({
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
-    if (thumbnailVideoRef.current && currentSource.thumbnailUrl) {
-      thumbnailVideoRef.current.currentTime = time;
+
+    // FIX: Add a check for the video element and its ready state
+    const thumbVideo = thumbnailVideoRef.current;
+    if (thumbVideo && thumbVideo.readyState > 1 && currentSource.thumbnailUrl) { // readyState > 1 means it has enough data to play
+      thumbVideo.currentTime = time;
     }
   };
 
@@ -530,6 +554,13 @@ export default function VideoPlayer({
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current.time < 350 && lastTapRef.current.side === side;
+    
+    if (!playerInteracted) {
+        handleFirstInteraction();
+        lastTapRef.current = { time: 0, side: 'center' }; 
+        return;
+    }
+
     if (isDoubleTap) {
       if (side === 'left') seek(-10);
       if (side === 'right') seek(10);
@@ -541,6 +572,7 @@ export default function VideoPlayer({
   };
 
   const handleTouchStart = () => {
+    if(!playerInteracted) return;
     holdTimeoutRef.current = setTimeout(() => {
       if (videoRef.current && isPlaying) {
         originalRateRef.current = videoRef.current.playbackRate
@@ -564,7 +596,7 @@ export default function VideoPlayer({
   const handleContinue = () => {
     setShowContinueWatching(false)
     if (videoRef.current) {
-      videoRef.current.play()
+      handleFirstInteraction();
     }
   }
 
@@ -572,7 +604,7 @@ export default function VideoPlayer({
     setShowContinueWatching(false)
     if (videoRef.current) {
       videoRef.current.currentTime = 0
-      videoRef.current.play()
+      handleFirstInteraction();
     }
   }
 
@@ -613,11 +645,8 @@ export default function VideoPlayer({
           onPause={() => setIsPlaying(false)}
           onEnded={handleEnded}
           preload="metadata"
-          playsInline
-        />
-        <div
-            className="absolute inset-0 z-10"
-            onClick={handlePlayerClick}
+          playsInline // Essencial para iOS
+          crossOrigin="anonymous" // Ajuda com CORS
         />
          {currentSource.thumbnailUrl && (
           <video
@@ -627,11 +656,13 @@ export default function VideoPlayer({
             preload="auto"
             muted
             playsInline
+            crossOrigin="anonymous" // FIX: Ajuda com CORS para thumbnails
           />
         )}
 
+        {/* MODIFICAÇÃO: Overlay principal agora chama a função correta */}
         <div
-          className="absolute inset-0 z-0"
+          className="absolute inset-0 z-10"
           onClick={handleMainClick}
         />
         
@@ -665,21 +696,24 @@ export default function VideoPlayer({
             </div>
           </div>
         )}
-
-        {!isLoading && !error && !isPlaying && !showNextEpisodeOverlay && (
+        
+        {/* MODIFICAÇÃO: Botão de play central agora usa a nova lógica */}
+        {!isLoading && !error && !isPlaying && (
           <button
             style={{ transform: 'translateZ(0)' }}
             aria-label="Play"
-            onClick={togglePlay}
+            onClick={handleFirstInteraction}
             className={cn(
-              "absolute z-10 inset-0 m-auto h-16 w-16 rounded-full",
+              "absolute z-20 inset-0 m-auto h-16 w-16 rounded-full",
               "bg-zinc-800/80 text-white",
               "flex items-center justify-center hover:bg-zinc-700/80 transition-colors",
+              showContinueWatching && 'hidden', // Esconde se a opção de continuar estiver visível
             )}
           >
             <Play className="h-7 w-7" />
           </button>
         )}
+
 
         {showContinueWatching && (
           <div
@@ -742,7 +776,7 @@ export default function VideoPlayer({
           )}
         </AnimatePresence>
 
-        <div className="absolute inset-0 z-0 flex md:hidden">
+        <div className="absolute inset-0 z-10 flex md:hidden">
             <div
                 className="flex-1"
                 onClick={() => onMobileTap('left')}
@@ -766,242 +800,246 @@ export default function VideoPlayer({
             />
         </div>
 
-        <div
-          data-controls
-          style={{ transform: 'translateZ(0)' }}
-          className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-6 md:px-3 transition-opacity duration-300",
-            showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
-          )}
-        >
-          <div
-            ref={progressWrapRef}
-            onMouseMove={onProgressMouseMove}
-            onMouseLeave={onProgressLeave}
-            className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
-          >
-             <div
-                className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10"
-                style={{
-                  left: hoverLeft,
-                  visibility: hoverTime !== null ? 'visible' : 'hidden',
-                }}
+        {/* MODIFICAÇÃO: Controles só são visíveis após a primeira interação */}
+        <AnimatePresence>
+          {playerInteracted && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              data-controls
+              style={{ transform: 'translateZ(0)' }}
+              className={cn(
+                "pointer-events-none absolute inset-x-0 bottom-0 z-20 px-2 pb-2 md:bottom-6 md:px-3 transition-opacity duration-300",
+                showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
+              )}
+            >
+              <div
+                ref={progressWrapRef}
+                onMouseMove={onProgressMouseMove}
+                onMouseLeave={onProgressLeave}
+                className="pointer-events-auto group/progress relative mb-3 cursor-pointer"
               >
-                {currentSource.thumbnailUrl && (
-                  <video
-                    ref={thumbnailVideoRef}
-                    src={currentSource.thumbnailUrl}
-                    className="aspect-video w-36 rounded-t-md bg-black"
-                    muted
-                  />
-                )}
-                <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
-              </div>
-            
-            <div className="relative flex items-center h-2.5 transition-[height] duration-200">
                 <div
-                    className="absolute top-1/2 -translate-y-1/2 h-full w-full bg-zinc-800 rounded-full"
-                />
-                <div
-                    className="absolute top-1/2 -translate-y-1/2 h-full bg-white/50 rounded-full"
-                    style={{ width: `${bufferPercentage}%` }}
-                />
-                <Slider
-                    value={[Math.min(currentTime, duration || 0)]}
-                    max={duration || 100}
-                    step={0.1}
-                    onValueChange={handleSeekSlider}
-                    className="absolute w-full inset-0"
-                    trackClassName="bg-transparent"
-                    rangeClassName="bg-red-600"
-                    thumbClassName="bg-red-600 border-red-600 h-3 w-3 group-hover/progress:h-5 group-hover/progress:w-5 transition-all"
-                />
-            </div>
-          </div>
-
-          {/* MODIFICAÇÃO: Barra de controles com fundo cinza sólido */}
-          <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-zinc-900/90 px-1 py-1 md:px-2 md:py-2">
-            <div className="flex items-center gap-1 md:gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                    {isPlaying ? <Pause className="h-5 w-5 md:h-6 md:w-6" /> : <Play className="h-5 w-5 md:h-6 md:w-6" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
-              </Tooltip>
-
-              <div className="h-6 w-px bg-white/20" />
-
-              <div className="flex items-center gap-2 group/vol">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                      {isMuted || volume === 0 ? <VolumeX className="h-5 w-5 md:h-6 md:w-6" /> : <Volume2 className="h-5 w-5 md:h-6 md:w-6" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Mutar (M)</TooltipContent>
-                </Tooltip>
-                <div className="w-0 overflow-hidden transition-all duration-300 group-hover/vol:w-24 md:w-0 md:group-hover/vol:w-24">
-                  <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
+                    className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10 overflow-hidden"
+                    style={{
+                      left: hoverLeft,
+                      visibility: hoverTime !== null ? 'visible' : 'hidden',
+                    }}
+                >
+                    {currentSource.thumbnailUrl && (
+                    <div className="aspect-video w-36 bg-black">
+                        {/* O vídeo de thumbnail é renderizado, mas pode não estar visível se não carregar */}
+                    </div>
+                    )}
+                    <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
+                </div>
+                
+                <div className="relative flex items-center h-2.5 transition-[height] duration-200">
+                    <div
+                        className="absolute top-1/2 -translate-y-1/2 h-full w-full bg-zinc-800 rounded-full"
+                    />
+                    <div
+                        className="absolute top-1/2 -translate-y-1/2 h-full bg-white/50 rounded-full"
+                        style={{ width: `${bufferPercentage}%` }}
+                    />
+                    <Slider
+                        value={[Math.min(currentTime, duration || 0)]}
+                        max={duration || 100}
+                        step={0.1}
+                        onValueChange={handleSeekSlider}
+                        className="absolute w-full inset-0"
+                        trackClassName="bg-transparent"
+                        rangeClassName="bg-red-600"
+                        thumbClassName="bg-red-600 border-red-600 h-3 w-3 group-hover/progress:h-5 group-hover/progress:w-5 transition-all"
+                    />
                 </div>
               </div>
-              <div className="flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
-                <span>{formatTime(currentTime)}</span>
-                <span>/</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
 
-            <div className="pointer-events-none absolute left-1/2 hidden max-w-[40vw] -translate-x-1/2 truncate text-sm text-white/80 md:block">
-              {title}
-            </div>
-
-            <div className="flex items-center gap-1 md:gap-2">
-              {downloadUrl && (
-                <>
+              <div className="pointer-events-auto flex items-center justify-between rounded-lg bg-zinc-900/90 px-1 py-1 md:px-2 md:py-2">
+                <div className="flex items-center gap-1 md:gap-2">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button asChild size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                        <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
-                            <Download className="h-5 w-5 md:h-6 md:w-6" />
-                        </a>
+                      <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                        {isPlaying ? <Pause className="h-5 w-5 md:h-6 md:w-6" /> : <Play className="h-5 w-5 md:h-6 md:w-6" />}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Download</TooltipContent>
+                    <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
                   </Tooltip>
+
                   <div className="h-6 w-px bg-white/20" />
-                </>
-              )}
-              <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <PopoverTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                        <Settings className="h-5 w-5 md:h-6 md:w-6" />
-                      </Button>
-                    </PopoverTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>Configurações</TooltipContent>
-                </Tooltip>
-                <PopoverContent 
-                  className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur"
-                  side="top"
-                  align="end"
-                  container={containerRef.current}
-                  style={{ zIndex: 2147483647 }}
-                >
-                    {settingsMenu === 'main' && (
-                        <div className="flex flex-col gap-1">
-                             {hasNextEpisode && (
-                                <div className="flex items-center justify-between h-9 w-full px-2">
-                                    <Label htmlFor="autoplay-switch" className="text-sm font-normal flex items-center gap-2">Próximo ep. automático</Label>
-                                    <Switch
-                                    id="autoplay-switch"
-                                    checked={isAutoplayEnabled}
-                                    onCheckedChange={toggleAutoplay}
-                                    />
-                                </div>
-                            )}
-                            <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('playbackRate')}>
-                                <span className="flex items-center gap-2">Velocidade</span>
-                                <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
-                            </Button>
-                            {sources && sources.length > 1 && (
-                                <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
-                                    <span className="flex items-center gap-2">Qualidade</span>
-                                    <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
-                                </Button>
-                            )}
-                        </div>
-                    )}
-                    {settingsMenu === 'quality' && (
-                        <div>
-                            <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
-                                <ChevronLeft className="h-4 w-4 mr-2"/>
-                                Qualidade
-                            </Button>
-                            <div className="flex flex-col gap-1">
-                                {sources.map((source) => (
-                                <Button
-                                    key={source.url}
-                                    variant="ghost"
-                                    className="h-9 w-full justify-start pl-8 pr-2 relative"
-                                    onClick={() => changeQuality(source)}
-                                >
-                                    {currentSource.url === source.url && <Check className="absolute left-2 h-4 w-4"/>}
-                                    {source.name}
-                                </Button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    {settingsMenu === 'playbackRate' && (
-                        <div>
-                            <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
-                                <ChevronLeft className="h-4 w-4 mr-2"/>
-                                Velocidade
-                            </Button>
-                            <div className="flex flex-col gap-1">
-                                {playbackRates.map((r) => (
-                                <Button
-                                    key={r}
-                                    variant="ghost"
-                                    className="h-9 w-full justify-start pl-8 pr-2 relative"
-                                    onClick={() => changePlaybackRate(r)}
-                                >
-                                    {playbackRate === r && <Check className="absolute left-2 h-4 w-4"/>}
-                                    {r === 1 ? "Normal" : `${r}x`}
-                                </Button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </PopoverContent>
-              </Popover>
 
-
-              {pipSupported && (
-                 <>
-                    <div className="h-6 w-px bg-white/20" />
+                  <div className="flex items-center gap-2 group/vol">
                     <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                        <PictureInPicture className={cn("h-5 w-5 md:h-6 md:w-6", isPipActive && "text-red-400")} />
+                      <TooltipTrigger asChild>
+                        <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                          {isMuted || volume === 0 ? <VolumeX className="h-5 w-5 md:h-6 md:w-6" /> : <Volume2 className="h-5 w-5 md:h-6 md:w-6" />}
                         </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Picture-in-Picture (P)</TooltipContent>
+                      </TooltipTrigger>
+                      <TooltipContent>Mutar (M)</TooltipContent>
                     </Tooltip>
-                 </>
-              )}
+                    <div className="w-0 overflow-hidden transition-all duration-300 group-hover/vol:w-24 md:w-0 md:group-hover/vol:w-24">
+                      <Slider value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} />
+                    </div>
+                  </div>
+                  <div className="flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>/</span>
+                    <span>{formatTime(duration)}</span>
+                  </div>
+                </div>
 
-              <div className="h-6 w-px bg-white/20" />
+                <div className="pointer-events-none absolute left-1/2 hidden max-w-[40vw] -translate-x-1/2 truncate text-sm text-white/80 md:block">
+                  {title}
+                </div>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                    {isFullscreen ? <Minimize className="h-5 w-5 md:h-6 md:w-6" /> : <Maximize className="h-5 w-5 md:h-6 md:w-6" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Tela Cheia (F)</TooltipContent>
-              </Tooltip>
+                <div className="flex items-center gap-1 md:gap-2">
+                  {downloadUrl && (
+                    <>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button asChild size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                            <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                                <Download className="h-5 w-5 md:h-6 md:w-6" />
+                            </a>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Download</TooltipContent>
+                      </Tooltip>
+                      <div className="h-6 w-px bg-white/20" />
+                    </>
+                  )}
+                  <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                            <Settings className="h-5 w-5 md:h-6 md:w-6" />
+                          </Button>
+                        </PopoverTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>Configurações</TooltipContent>
+                    </Tooltip>
+                    <PopoverContent 
+                      className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur"
+                      side="top"
+                      align="end"
+                      container={containerRef.current}
+                      style={{ zIndex: 2147483647 }}
+                    >
+                        {settingsMenu === 'main' && (
+                            <div className="flex flex-col gap-1">
+                                {hasNextEpisode && (
+                                    <div className="flex items-center justify-between h-9 w-full px-2">
+                                        <Label htmlFor="autoplay-switch" className="text-sm font-normal flex items-center gap-2">Próximo ep. automático</Label>
+                                        <Switch
+                                        id="autoplay-switch"
+                                        checked={isAutoplayEnabled}
+                                        onCheckedChange={toggleAutoplay}
+                                        />
+                                    </div>
+                                )}
+                                <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('playbackRate')}>
+                                    <span className="flex items-center gap-2">Velocidade</span>
+                                    <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
+                                </Button>
+                                {sources && sources.length > 1 && (
+                                    <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
+                                        <span className="flex items-center gap-2">Qualidade</span>
+                                        <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                        {settingsMenu === 'quality' && (
+                            <div>
+                                <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                    <ChevronLeft className="h-4 w-4 mr-2"/>
+                                    Qualidade
+                                </Button>
+                                <div className="flex flex-col gap-1">
+                                    {sources.map((source) => (
+                                    <Button
+                                        key={source.url}
+                                        variant="ghost"
+                                        className="h-9 w-full justify-start pl-8 pr-2 relative"
+                                        onClick={() => changeQuality(source)}
+                                    >
+                                        {currentSource.url === source.url && <Check className="absolute left-2 h-4 w-4"/>}
+                                        {source.name}
+                                    </Button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {settingsMenu === 'playbackRate' && (
+                            <div>
+                                <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                    <ChevronLeft className="h-4 w-4 mr-2"/>
+                                    Velocidade
+                                </Button>
+                                <div className="flex flex-col gap-1">
+                                    {playbackRates.map((r) => (
+                                    <Button
+                                        key={r}
+                                        variant="ghost"
+                                        className="h-9 w-full justify-start pl-8 pr-2 relative"
+                                        onClick={() => changePlaybackRate(r)}
+                                    >
+                                        {playbackRate === r && <Check className="absolute left-2 h-4 w-4"/>}
+                                        {r === 1 ? "Normal" : `${r}x`}
+                                    </Button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </PopoverContent>
+                  </Popover>
 
-              {onClose && (
-                <>
+
+                  {pipSupported && (
+                    <>
+                        <div className="h-6 w-px bg-white/20" />
+                        <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                            <PictureInPicture className={cn("h-5 w-5 md:h-6 md:w-6", isPipActive && "text-red-400")} />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Picture-in-Picture (P)</TooltipContent>
+                        </Tooltip>
+                    </>
+                  )}
+
                   <div className="h-6 w-px bg-white/20" />
+
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                        <X className="h-5 w-5 md:h-6 md:w-6" />
+                      <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                        {isFullscreen ? <Minimize className="h-5 w-5 md:h-6 md:w-6" /> : <Maximize className="h-5 w-5 md:h-6 md:w-6" />}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Fechar</TooltipContent>
+                    <TooltipContent>Tela Cheia (F)</TooltipContent>
                   </Tooltip>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+
+                  {onClose && (
+                    <>
+                      <div className="h-6 w-px bg-white/20" />
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
+                            <X className="h-5 w-5 md:h-6 md:w-6" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Fechar</TooltipContent>
+                      </Tooltip>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </TooltipProvider>
   )
