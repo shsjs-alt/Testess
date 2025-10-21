@@ -2,7 +2,6 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import Hls from "hls.js"
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, Settings, PictureInPicture, X, Download, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
@@ -80,7 +79,6 @@ export default function VideoPlayer({
   const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
   
-  const hlsRef = useRef<Hls | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -89,50 +87,35 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    useEffect(() => {
-        const video = videoRef.current;
-        if (!video || !currentSource.url) return;
+  // MODIFICAÇÃO: Lógica de HLS.js removida. Agora trata tudo como link direto.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !currentSource?.url) return;
+
+    const savedTime = video.currentTime > 1 ? video.currentTime : 0;
     
-        if (hlsRef.current) {
-            hlsRef.current.destroy();
-            hlsRef.current = null;
-        }
-
-        const savedTime = video.currentTime; 
-
-        const isHls = currentSource.url.toLowerCase().includes('.m3u8');
-        
-        if (isHls && Hls.isSupported()) {
-            const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60 });
-            hlsRef.current = hls;
-            hls.loadSource(currentSource.url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.currentTime = savedTime; 
-            });
-            hls.on(Hls.Events.ERROR, (event, data) => {
-                if (data.fatal) {
-                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { setError("Erro de rede ao carregar o vídeo."); } 
-                     else { setError("Não foi possível carregar o vídeo (erro de mídia)."); }
-                }
-            });
-        } else {
-            video.src = currentSource.url;
-            video.currentTime = savedTime; 
-        }
+    video.src = currentSource.url;
     
-        setEndingTriggered(false);
-        setShowNextEpisodeOverlay(false);
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-        }
-        
-        return () => {
-            if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
-            if (video) { video.removeAttribute('src'); video.load(); }
-        };
-    }, [currentSource]);
+    const handleCanPlay = () => {
+      if (video.currentTime < savedTime) {
+        video.currentTime = savedTime;
+      }
+    };
+    
+    video.addEventListener('canplay', handleCanPlay);
 
+    setEndingTriggered(false);
+    setShowNextEpisodeOverlay(false);
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
+    
+    return () => {
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [currentSource]);
 
   useEffect(() => {
     try {
@@ -240,12 +223,12 @@ export default function VideoPlayer({
         }
     }
   }
+  
+  // MODIFICAÇÃO: Simplificada para links diretos
   const handleError = () => {
     setIsLoading(false)
     setIsBuffering(false)
-    if (!hlsRef.current) {
-        setError("Não foi possível carregar o vídeo.")
-    }
+    setError("Não foi possível carregar o vídeo.")
   }
 
   const handleTimeUpdate = () => {
@@ -760,7 +743,8 @@ export default function VideoPlayer({
           style={{ transform: 'translateZ(0)' }}
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-6 md:px-3 transition-opacity duration-300",
-            "bg-gradient-to-t from-black/50 to-transparent pt-10",
+            // MODIFICAÇÃO: Ajustado o gradiente para ser mais escuro.
+            "bg-gradient-to-t from-black/80 to-transparent pt-10",
             showControls && !showNextEpisodeOverlay ? "opacity-100" : "opacity-0",
           )}
         >
@@ -896,7 +880,7 @@ export default function VideoPlayer({
                                 <span className="flex items-center gap-2">Velocidade</span>
                                 <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
                             </Button>
-                            {sources && sources.length > 0 && (
+                            {sources && sources.length > 1 && (
                                 <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
                                     <span className="flex items-center gap-2">Qualidade</span>
                                     <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>

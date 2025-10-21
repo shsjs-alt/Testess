@@ -8,7 +8,7 @@ import { LayoutWrapper } from "@/components/layout-wrapper"
 export const metadata: Metadata = {
   title: "PrimeVicio - API,EMBED DE FILMES E SÉRIES GRÁTIS",
   description: "API DE EMBED COM FILMES E SÉRIES com players rápidos e conteúdo atualizado e Totalmente Gratuito.",
-  icons: "https://i.ibb.co/rKhmNPtV/primevicio.png",
+  icons: "https://i.ibb.co/xqMzw3J1/primevicioicon.png",
 }
 
 export default function RootLayout({
