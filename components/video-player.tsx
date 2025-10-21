@@ -87,6 +87,32 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const adUrl = "https://otieu.com/4/10070814";
+  const adInterval = 2 * 60 * 1000; // 2 minutes in milliseconds
+  const lastAdTimeRef = useRef<number | null>(null);
+
+  const openAd = () => {
+    window.open(adUrl, "_blank");
+    lastAdTimeRef.current = Date.now();
+  };
+
+  const handlePlayerClick = () => {
+    if (lastAdTimeRef.current === null) {
+      openAd();
+    }
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isPlaying && lastAdTimeRef.current !== null && Date.now() - lastAdTimeRef.current >= adInterval) {
+        videoRef.current?.pause();
+        openAd();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, adInterval]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentSource?.url) return;
@@ -588,6 +614,10 @@ export default function VideoPlayer({
           onEnded={handleEnded}
           preload="metadata"
           playsInline
+        />
+        <div
+            className="absolute inset-0 z-10"
+            onClick={handlePlayerClick}
         />
          {currentSource.thumbnailUrl && (
           <video
