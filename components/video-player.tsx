@@ -2,7 +2,8 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, Settings, PictureInPicture, X, Download, ChevronLeft, ChevronRight, Check, AlertTriangle } from 'lucide-react'
+// ADDED: Needed Lucide icons that remain
+import { Play, Pause, RotateCcw, X, ChevronLeft, ChevronRight, Check, AlertTriangle } from 'lucide-react' // REMOVED: Download
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -20,10 +21,11 @@ type StreamSource = {
   thumbnailUrl?: string;
 }
 
+// MODIFIED: Removed downloadUrl prop
 type VideoPlayerProps = {
   sources: StreamSource[]
   title: string
-  downloadUrl?: string
+  // downloadUrl?: string // REMOVED
   onClose?: () => void
   rememberPositionKey?: string
   rememberPosition?: boolean
@@ -32,23 +34,33 @@ type VideoPlayerProps = {
   backdropPath?: string | null;
 }
 
-// Componente de Overlay inicial
-const PlayerOverlay = ({ onPlay }: { onPlay: () => void }) => (
-  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 cursor-pointer" onClick={onPlay}>
-    <Button
-      className="relative z-20 h-20 w-20 rounded-full bg-white/20 hover:bg-white/30 transition-all flex items-center justify-center group pointer-events-none"
-      aria-label="Assistir"
+// Componente de Overlay inicial MODIFIED
+const PlayerOverlay = ({ onPlay }: { onPlay: () => void }) => {
+  const [isHovering, setIsHovering] = useState(false);
+
+  return (
+    <div
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 cursor-pointer"
+      onClick={onPlay}
     >
-      <Play className="h-10 w-10 text-white group-hover:scale-110 transition-transform fill-white" />
-    </Button>
-  </div>
-);
+      <img
+        // MODIFIED: New image URLs and reduced size
+        src={isHovering ? "https://i.ibb.co/b5GFzpMs/bot-o-de-play-central-aceso.png" : "https://i.ibb.co/8qbZwTV/bot-o-de-play-central.png"}
+        alt="Assistir"
+        className="h-16 w-16 object-contain pointer-events-auto" // Reduced size
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+        draggable="false" // ADDED
+      />
+    </div>
+  );
+};
 
 
 export default function VideoPlayer({
   sources,
   title,
-  downloadUrl,
+  // downloadUrl, // REMOVED
   onClose,
   rememberPositionKey,
   rememberPosition = true,
@@ -60,7 +72,7 @@ export default function VideoPlayer({
   const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
-  
+
   const [isSandboxed, setIsSandboxed] = useState(false);
   const [adBlockerDetected, setAdBlockerDetected] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -87,21 +99,21 @@ export default function VideoPlayer({
   const [showSeekHint, setShowSeekHint] = useState<null | { dir: "fwd" | "back"; by: number }>(null)
   const [showSpeedHint, setShowSpeedHint] = useState(false)
   const [showContinueWatching, setShowContinueWatching] = useState(false)
-  
+
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
   const [countdown, setCountdown] = useState(5)
   const [endingTriggered, setEndingTriggered] = useState(false);
-  
+
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  
+
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
-  
+
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const volumeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
@@ -115,8 +127,7 @@ export default function VideoPlayer({
   const adInterval = 2 * 60 * 1000; // 2 minutos
   const lastAdTimeRef = useRef<number | null>(null);
 
-  // ✅ CORREÇÃO: Lógica de detecção simplificada. Agora só verifica adblocker de elementos.
-  // A detecção de sandbox será feita de forma ativa ao tentar abrir o anúncio.
+  // ... (restante do useEffect e outras funções permanecem iguais) ...
   useEffect(() => {
     if (typeof window === 'undefined') {
         setChecking(false);
@@ -146,11 +157,9 @@ export default function VideoPlayer({
     setTimeout(adBlockerCheck, 100);
   }, []);
 
-  // ✅ CORREÇÃO: Função de anúncio agora retorna se o pop-up foi bloqueado
   const triggerAd = useCallback(() => {
     const adWindow = window.open(adUrl, "_blank");
     if (!adWindow || adWindow.closed || typeof adWindow.closed === 'undefined') {
-        // Pop-up foi bloqueado pelo navegador ou por um sandbox
         return false;
     }
     lastAdTimeRef.current = Date.now();
@@ -159,46 +168,49 @@ export default function VideoPlayer({
     }
     return true;
   }, [adUrl]);
-  
-  // ✅ CORREÇÃO: O play inicial agora depende do sucesso do anúncio
+
   const handleInitialPlay = () => {
     const adWasSuccessful = triggerAd();
     if (adWasSuccessful) {
-        setIsPlayerActive(true); // Se o anúncio abriu, ativa o player
+        setIsPlayerActive(true);
     } else {
-        setIsSandboxed(true); // Se foi bloqueado, mostra a mensagem de Acesso Restrito
+        setIsSandboxed(true);
         setChecking(false);
     }
   };
-  
+
   const handlePlayerAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Check if the click is on the play button overlay image
+    if ((e.target as HTMLElement).tagName === 'IMG' && (e.target as HTMLElement).closest('.absolute.inset-0.z-20')) {
+        return; // Don't toggle play if the initial play button is clicked
+    }
     if ((e.target as HTMLElement).closest('[data-controls]')) return;
-  
+
     if (lastAdTimeRef.current && Date.now() - lastAdTimeRef.current > adInterval) {
       const adWasSuccessful = triggerAd();
       if (!adWasSuccessful) {
-          setIsSandboxed(true); // Mostra a mensagem se o anúncio for bloqueado depois
+          setIsSandboxed(true);
           return;
       }
     }
     togglePlay();
   };
-  
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentSource?.url || !isPlayerActive) return;
 
     const savedTime = video.currentTime > 1 ? video.currentTime : 0;
-    
+
     video.src = currentSource.url;
-    
+
     const handleCanPlay = () => {
       if (video.currentTime < savedTime) {
         video.currentTime = savedTime;
       }
       video.play().catch(handleError);
     };
-    
+
     video.addEventListener('canplay', handleCanPlay);
 
     setEndingTriggered(false);
@@ -206,7 +218,7 @@ export default function VideoPlayer({
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
-    
+
     return () => {
       video.removeEventListener('canplay', handleCanPlay);
       if(video) {
@@ -224,7 +236,7 @@ export default function VideoPlayer({
         setVolume(v)
         if (videoRef.current) videoRef.current.volume = v
       }
-      
+
       const savedAutoplay = localStorage.getItem(autoplayKey);
       if (savedAutoplay !== null) {
         setIsAutoplayEnabled(JSON.parse(savedAutoplay));
@@ -257,7 +269,7 @@ export default function VideoPlayer({
   useEffect(() => {
     setPipSupported(typeof document !== "undefined" && "pictureInPictureEnabled" in document)
   }, [])
-  
+
   const hideControls = useCallback(() => {
     setShowControls(false);
   }, []);
@@ -288,10 +300,10 @@ export default function VideoPlayer({
       }
     };
   }, [isPlayerActive, resetControlsTimeout, hideControls]);
-  
+
   useEffect(() => {
     if (!isSettingsOpen) {
-      const timer = setTimeout(() => setSettingsMenu('main'), 150); 
+      const timer = setTimeout(() => setSettingsMenu('main'), 150);
       return () => clearTimeout(timer);
     }
   }, [isSettingsOpen]);
@@ -322,7 +334,7 @@ export default function VideoPlayer({
         }
     }
   }
-  
+
   const handleError = () => {
     setIsLoading(false)
     setIsBuffering(false)
@@ -364,7 +376,7 @@ export default function VideoPlayer({
       videoRef.current.currentTime = videoRef.current.duration;
     }
   };
-  
+
   useEffect(() => {
     if (showNextEpisodeOverlay) {
       countdownIntervalRef.current = setInterval(() => {
@@ -433,7 +445,7 @@ export default function VideoPlayer({
     if (volumeTimeoutRef.current) clearTimeout(volumeTimeoutRef.current);
     setIsVolumeOpen(true);
   };
-  
+
   const handleVolumeMouseLeave = () => {
     volumeTimeoutRef.current = setTimeout(() => {
         setIsVolumeOpen(false);
@@ -494,7 +506,7 @@ export default function VideoPlayer({
     setPlaybackRate(rate)
     setSettingsMenu('main');
   }
-  
+
   const changeQuality = (source: StreamSource) => {
       if(currentSource.url !== source.url){ setCurrentSource(source); }
       setSettingsMenu('main');
@@ -512,7 +524,7 @@ export default function VideoPlayer({
     const v = videoRef.current
     if (!v || !document.pictureInPictureEnabled) return
     try {
-      if (document.pictureInPictureElement) { await (document as any).exitPictureInPicture() } 
+      if (document.pictureInPictureElement) { await (document as any).exitPictureInPicture() }
       else { await (v as any).requestPictureInPicture() }
     } catch (e) { console.error("Erro no PIP", e) }
   }, [])
@@ -548,8 +560,8 @@ export default function VideoPlayer({
         const url = new URL(currentSource.url);
         url.searchParams.set('retry_timestamp', Date.now().toString());
         const newSrc = url.toString();
-        
-        video.src = ''; 
+
+        video.src = '';
         video.load();
         setTimeout(() => {
             video.src = newSrc;
@@ -567,7 +579,7 @@ export default function VideoPlayer({
       if (!isPlayerActive) return;
       const activeElement = document.activeElement;
       if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.getAttribute("role") === "slider")) return;
-  
+
       if (e.key === ' ' && !e.repeat) {
         e.preventDefault();
         if (isSpeedingUpRef.current) return;
@@ -581,7 +593,7 @@ export default function VideoPlayer({
           }
         }, 200);
       }
-  
+
       switch (e.key.toLowerCase()) {
         case "k": e.preventDefault(); togglePlay(); break;
         case "f": toggleFullscreen(); break;
@@ -593,7 +605,7 @@ export default function VideoPlayer({
         case "arrowdown": e.preventDefault(); handleVolumeChange([Math.max(0, volume - 0.1)]); break;
       }
     };
-  
+
     const onKeyUp = (e: KeyboardEvent) => {
       if (!isPlayerActive) return;
       if (e.key === ' ') {
@@ -611,7 +623,7 @@ export default function VideoPlayer({
         }
       }
     };
-  
+
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     return () => {
@@ -640,7 +652,7 @@ export default function VideoPlayer({
     if (!isPlayerActive) return;
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current.time < 350 && lastTapRef.current.side === side;
-    
+
     if (isDoubleTap) {
         if (side === 'left') seek(-10);
         else if (side === 'right') seek(10);
@@ -703,10 +715,15 @@ export default function VideoPlayer({
     hoverTime !== null && duration > 0 && progressWrapRef.current
       ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
       : 0
-  
+
   const bufferPercentage = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
-  
+
   const currentSpeedLabel = playbackRate === 1 ? "Normal" : `${playbackRate}x`;
+
+  // Define icon size classes - MODIFIED to be slightly larger
+  const iconSize = "max-h-[20px] max-w-[20px] md:max-h-[22px] md:max-w-[22px]"; // Adjusted sizes
+  const smallIconSize = "max-h-[16px] max-w-[16px] md:max-h-[18px] md:max-w-[18px]"; // Adjusted sizes
+
 
   if (checking) {
     return (
@@ -791,10 +808,10 @@ export default function VideoPlayer({
             crossOrigin="anonymous"
           />
         )}
-        
+
         {(isLoading || isBuffering) && isPlayerActive && (
-          <div 
-            style={{ transform: 'translateZ(0)' }} 
+          <div
+            style={{ transform: 'translateZ(0)' }}
             className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
           >
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-white" />
@@ -802,8 +819,8 @@ export default function VideoPlayer({
         )}
 
         {error && (
-          <div 
-            style={{ transform: 'translateZ(0)' }} 
+          <div
+            style={{ transform: 'translateZ(0)' }}
             className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 p-4"
           >
             <div className="text-center text-white">
@@ -822,7 +839,7 @@ export default function VideoPlayer({
             </div>
           </div>
         )}
-        
+
         <AnimatePresence>
           {!isPlayerActive && !error && <PlayerOverlay onPlay={handleInitialPlay} />}
         </AnimatePresence>
@@ -841,8 +858,8 @@ export default function VideoPlayer({
         )}
 
         {showSeekHint && isPlayerActive && (
-          <div 
-            style={{ transform: 'translateZ(0)' }} 
+          <div
+            style={{ transform: 'translateZ(0)' }}
             className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
           >
             <div className="rounded-full bg-black/60 px-3 py-1 text-sm text-white ring-1 ring-white/10">
@@ -866,7 +883,7 @@ export default function VideoPlayer({
             </motion.div>
           )}
         </AnimatePresence>
-        
+
         <AnimatePresence>
           {showNextEpisodeOverlay && isPlayerActive && (
             <motion.div
@@ -887,6 +904,7 @@ export default function VideoPlayer({
           )}
         </AnimatePresence>
 
+        {/* Mobile tap zones */}
         <div className="absolute inset-0 z-0 flex md:hidden">
             <div
                 className="flex-1"
@@ -907,27 +925,32 @@ export default function VideoPlayer({
                 onTouchCancel={handleTouchEnd}
             />
         </div>
-        
+
+        {/* Controls */}
         <AnimatePresence>
         {isPlayerActive && (
             <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
+            initial={{ opacity: 0, y: 20 }} // Slide up effect
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.2 }}
             data-controls
             style={{ transform: 'translateZ(0)' }}
             className={cn(
-                "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-6 md:px-3 transition-opacity duration-300",
+                "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-4 md:px-4 transition-opacity duration-300",
                 (showControls && !showNextEpisodeOverlay) ? "opacity-100 visible pointer-events-auto" : "opacity-0 invisible pointer-events-none",
+                // Gradient background from example
+                "bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-10"
             )}
             >
+            {/* Progress Bar */}
             <div
                 ref={progressWrapRef}
                 onMouseMove={onProgressMouseMove}
                 onMouseLeave={onProgressLeave}
-                className="group/progress relative mb-3 cursor-pointer"
+                className="group/progress relative mb-2 cursor-pointer"
             >
+                {/* Thumbnail Preview */}
                 <div
                     className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10"
                     style={{
@@ -954,28 +977,58 @@ export default function VideoPlayer({
                     )}
                     <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
                 </div>
-                
-                <div className="relative flex items-center h-2.5 transition-[height] duration-200">
-                    <div className="absolute top-1/2 -translate-y-1/2 h-full w-full bg-zinc-800 rounded-full"/>
-                    <div className="absolute top-1/2 -translate-y-1/2 h-full bg-white/50 rounded-full" style={{ width: `${bufferPercentage}%` }} />
-                    <Slider value={[Math.min(currentTime, duration || 0)]} max={duration || 100} step={0.1} onValueChange={handleSeekSlider} className="absolute w-full inset-0" trackClassName="bg-transparent" rangeClassName="bg-red-600" thumbClassName="bg-red-600 border-red-600 h-3 w-3 group-hover/progress:h-5 group-hover/progress:w-5 transition-all" />
+
+                {/* Slider - MODIFIED track/range/buffer thickness and alignment */}
+                 <div className="relative flex items-center h-2 group-hover/progress:h-2.5 transition-[height] duration-200">
+                    {/* Background Track (thicker) */}
+                    <div className="absolute top-1/2 -translate-y-1/2 h-1 group-hover/progress:h-1.5 w-full bg-white/20 rounded-full"/>
+                    {/* Buffer Track (Aligned) */}
+                    <div className="absolute top-1/2 -translate-y-1/2 h-1 group-hover/progress:h-1.5 bg-white/70 rounded-full" style={{ width: `${bufferPercentage}%` }} />
+                    {/* Progress Slider (thinner range, aligned) */}
+                    <Slider
+                        value={[Math.min(currentTime, duration || 0)]}
+                        max={duration || 100}
+                        step={0.1}
+                        onValueChange={handleSeekSlider}
+                        className="absolute w-full inset-0 h-full" // Ensure slider covers the area
+                        trackClassName="bg-transparent h-full" // Make track transparent and full height of parent
+                        // Range sits inside the track, vertically centered implicitly if track is aligned
+                        rangeClassName="bg-white h-0.5 group-hover/progress:h-1 absolute top-1/2 -translate-y-1/2"
+                        thumbClassName="bg-white border-white h-2 w-2 md:h-3 md:w-3 group-hover/progress:opacity-100 opacity-0 transition-opacity block" // Ensure thumb is block
+                    />
                 </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg bg-zinc-900 px-1 py-2 md:px-2 md:py-3">
-                <div className="flex items-center gap-1 md:gap-2">
+            {/* Control Buttons Bar */}
+            <div className="flex items-center justify-between">
+                {/* Left Controls - Adjusted gap */}
+                <div className="flex items-center gap-1.5 md:gap-2.5"> {/* Reduced gap */}
                     <Tooltip>
                         <TooltipTrigger asChild>
-                        <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                            {isPlaying ? <Pause className="h-5 w-5 md:h-6 md:w-6" /> : <Play className="h-5 w-5 md:h-6 md:w-6" />}
+                        <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                            {/* Play/Pause icons using images */}
+                            {isPlaying ?
+                                <img
+                                    src="https://i.ibb.co/fdgFF2VK/despause-pequeno-bot-o.png"
+                                    alt="Pause"
+                                    className={cn("object-contain", iconSize)} // Use iconSize
+                                    draggable="false"
+                                />
+                                :
+                                <img
+                                    src="https://i.ibb.co/chY4zZLj/bot-o-de-play-central.png"
+                                    alt="Play"
+                                    className={cn("object-contain", iconSize)} // Use iconSize
+                                    draggable="false"
+                                />
+                            }
                         </Button>
                         </TooltipTrigger>
                         <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
                     </Tooltip>
 
-                    <div className="h-6 w-px bg-white/20" />
-                    
-                    <div 
+                    {/* Volume Control */}
+                    <div
                         className="relative flex items-center"
                         onMouseEnter={handleVolumeMouseEnter}
                         onMouseLeave={handleVolumeMouseLeave}
@@ -986,78 +1039,96 @@ export default function VideoPlayer({
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: '80px' }}
                                 exit={{ opacity: 0, height: 0 }}
-                                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-zinc-800/80 rounded-full p-2 flex items-center justify-center"
+                                // MODIFIED: Volume slider pop-up style to match image
+                                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-zinc-800/90 rounded-md p-1 flex items-center justify-center backdrop-blur-sm ring-1 ring-white/10 w-8 h-[100px]" // Use zinc, rounded-md
                             >
                                 <Slider
                                     orientation="vertical"
-                                    value={[volume]}
+                                    value={[isMuted ? 0 : volume]}
                                     max={1}
                                     step={0.05}
                                     onValueChange={handleVolumeChange}
-                                    className="w-2 h-full"
-                                    trackClassName="bg-zinc-700"
-                                    rangeClassName="bg-white"
-                                    thumbClassName="bg-black border-2 border-white h-4 w-4"
+                                    className="w-1.5 h-full"
+                                    trackClassName="bg-zinc-600 w-full" // Darker track
+                                    rangeClassName="bg-white w-full"
+                                    thumbClassName="bg-white border-none h-3 w-3 block" // White thumb
                                 />
                             </motion.div>
                         )}
                         </AnimatePresence>
                         <Tooltip>
                         <TooltipTrigger asChild>
-                            <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                            {isMuted || volume === 0 ? <VolumeX className="h-5 w-5 md:h-6 md:w-6" /> : <Volume2 className="h-5 w-5 md:h-6 md:w-6" />}
+                            <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                             <img
+                                src="https://i.ibb.co/0VQwLNMw/botao-de-volume.png"
+                                alt="Volume"
+                                className={cn("object-contain", iconSize, (isMuted || volume === 0) && "opacity-50")}
+                                draggable="false"
+                             />
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent>Mutar (M)</TooltipContent>
                         </Tooltip>
                     </div>
 
-                    <div className="flex select-none justify-between text-sm text-white/80 items-center gap-1.5">
+                    {/* Time Display */}
+                    <div className="flex select-none justify-between text-xs md:text-sm text-white/90 items-center gap-1">
                         <span>{formatTime(currentTime)}</span>
                         <span>/</span>
                         <span>{formatTime(duration)}</span>
                     </div>
                 </div>
 
+                {/* Center Title (hidden on small screens) */}
                 <div className="pointer-events-none absolute left-1/2 hidden max-w-[40vw] -translate-x-1/2 truncate text-sm text-white/80 md:block">
                     {title}
                 </div>
 
-                <div className="flex items-center gap-1 md:gap-2">
-                    {downloadUrl && (
-                        <>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                            <Button asChild size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                                <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
-                                    <Download className="h-5 w-5 md:h-6 md:w-6" />
-                                </a>
-                            </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Download</TooltipContent>
-                        </Tooltip>
-                        <div className="h-6 w-px bg-white/20" />
-                        </>
-                    )}
+                {/* Right Controls - Adjusted gap */}
+                <div className="flex items-center gap-1.5 md:gap-2.5"> {/* Reduced gap */}
+                    {/* REMOVED Download Button */}
+
+                    {/* Chromecast Button */}
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center" onClick={() => {/* TODO: Implement cast functionality */}}>
+                            <img
+                                src="https://i.ibb.co/2Yy4Pv04/bot-o-de-chromecast.png"
+                                alt="Cast"
+                                className={cn("object-contain", iconSize)}
+                                draggable="false"
+                            />
+                        </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Chromecast</TooltipContent>
+                    </Tooltip>
+
+                    {/* Settings Button */}
                     <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
                         <Tooltip>
                         <TooltipTrigger asChild>
                             <PopoverTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                                <Settings className="h-5 w-5 md:h-6 md:w-6" />
+                            <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                <img
+                                    src="https://i.ibb.co/W4PKpLj1/botao-de-config.png"
+                                    alt="Configurações"
+                                    className={cn("object-contain", iconSize)}
+                                    draggable="false"
+                                />
                             </Button>
                             </PopoverTrigger>
                         </TooltipTrigger>
                         <TooltipContent>Configurações</TooltipContent>
                         </Tooltip>
-                        <PopoverContent 
-                        className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur"
+                        <PopoverContent
+                        className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur ring-1 ring-white/10"
                         side="top"
                         align="end"
                         container={containerRef.current}
                         style={{ zIndex: 2147483647 }}
                         >
-                            {settingsMenu === 'main' && (
+                           {/* Popover content remains the same */}
+                           {settingsMenu === 'main' && (
                                 <div className="flex flex-col gap-1">
                                     {hasNextEpisode && (
                                         <div className="flex items-center justify-between h-9 w-full px-2">
@@ -1126,44 +1197,57 @@ export default function VideoPlayer({
                         </PopoverContent>
                     </Popover>
 
-
+                    {/* Picture in Picture Button */}
                     {pipSupported && (
-                        <>
-                            <div className="h-6 w-px bg-white/20" />
-                            <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                                <PictureInPicture className={cn("h-5 w-5 md:h-6 md:w-6", isPipActive && "text-red-400")} />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Picture-in-Picture (P)</TooltipContent>
-                            </Tooltip>
-                        </>
+                        <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                             <img
+                                src="https://i.ibb.co/Jw0ndFSc/picture-in-picture.png"
+                                alt="PiP"
+                                className={cn("object-contain", iconSize, isPipActive && "opacity-70")}
+                                draggable="false"
+                            />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Picture-in-Picture (P)</TooltipContent>
+                        </Tooltip>
                     )}
 
-                    <div className="h-6 w-px bg-white/20" />
-
+                     {/* Fullscreen Button */}
                     <Tooltip>
                         <TooltipTrigger asChild>
-                        <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                            {isFullscreen ? <Minimize className="h-5 w-5 md:h-6 md:w-6" /> : <Maximize className="h-5 w-5 md:h-6 md:w-6" />}
+                        <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                            {isFullscreen ?
+                                <img
+                                    src="https://i.ibb.co/bg2F2VFZ/sair-de-tela-cheia.png"
+                                    alt="Sair Tela Cheia"
+                                    className={cn("object-contain", iconSize)}
+                                    draggable="false"
+                                />
+                                :
+                                <img
+                                    src="https://i.ibb.co/x8wjGChh/tela-cheia-bot-o.png"
+                                    alt="Tela Cheia"
+                                    className={cn("object-contain", iconSize)}
+                                    draggable="false"
+                                />
+                            }
                         </Button>
                         </TooltipTrigger>
                         <TooltipContent>Tela Cheia (F)</TooltipContent>
                     </Tooltip>
 
+                    {/* Close Button */}
                     {onClose && (
-                        <>
-                        <div className="h-6 w-px bg-white/20" />
                         <Tooltip>
                             <TooltipTrigger asChild>
-                            <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/15">
-                                <X className="h-5 w-5 md:h-6 md:w-6" />
+                            <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10">
+                                <X className={smallIconSize} />
                             </Button>
                             </TooltipTrigger>
                             <TooltipContent>Fechar</TooltipContent>
                         </Tooltip>
-                        </>
                     )}
                     </div>
                 </div>
