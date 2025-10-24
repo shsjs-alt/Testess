@@ -100,22 +100,24 @@ export default function VideoPlayer({
 
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
-  const [countdown, setCountdown] = useState(5)
+  // CORREÇÃO: Countdown não é mais necessário aqui, será gerenciado na função
+  // const [countdown, setCountdown] = useState(5)
   const [endingTriggered, setEndingTriggered] = useState(false);
 
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // ADICIONADO: Estado de controle da barra de volume
-  const [isVolumeOpen, setIsVolumeOpen] = useState(false);
+  // CORREÇÃO: Controle da visibilidade do slider de volume
+  const [isVolumeSliderVisible, setIsVolumeSliderVisible] = useState(false);
+  const [isHoveringVolumeArea, setIsHoveringVolumeArea] = useState(false);
 
   const volumeKey = "video-player-volume"
   const autoplayKey = "video-player-autoplay-enabled"
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
 
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  // ADICIONADO: Ref de timeout da barra de volume
-  const volumeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // CORREÇÃO: Timeout para esconder o slider de volume
+  const volumeSliderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const originalRateRef = useRef<number>(1)
@@ -298,24 +300,30 @@ export default function VideoPlayer({
   }, [])
 
   const hideControls = useCallback(() => {
-    setShowControls(false);
-    setIsVolumeOpen(false); // Hide volume slider when controls hide
-  }, []);
+    // CORREÇÃO: Só esconde se o mouse não estiver sobre a área de volume
+    if (!isHoveringVolumeArea) {
+      setShowControls(false);
+      setIsVolumeSliderVisible(false); // Garante que o slider feche com os controles
+    }
+  }, [isHoveringVolumeArea]);
 
   const resetControlsTimeout = useCallback(() => {
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
     setShowControls(true);
-    controlsTimeoutRef.current = setTimeout(hideControls, 3500);
-  }, [hideControls]);
+    // CORREÇÃO: Define um novo timeout apenas se o vídeo estiver tocando
+    if (isPlaying) {
+        controlsTimeoutRef.current = setTimeout(hideControls, 3500);
+    }
+  }, [hideControls, isPlaying]); // Adicionado isPlaying como dependência
 
   useEffect(() => {
     if (!isPlayerActive) return;
     const container = containerRef.current;
     if (container) {
       container.addEventListener("mousemove", resetControlsTimeout);
-      // Removed mouseleave listener to keep controls visible when mouse is over them
+      // CORREÇÃO: Mouseleave é gerenciado agora pelo hideControls e isHoveringVolumeArea
       // container.addEventListener("mouseleave", hideControls);
       container.addEventListener("touchstart", resetControlsTimeout, { passive: true });
     }
@@ -328,7 +336,7 @@ export default function VideoPlayer({
         container.removeEventListener("touchstart", resetControlsTimeout);
       }
     };
-  }, [isPlayerActive, resetControlsTimeout, hideControls]);
+  }, [isPlayerActive, resetControlsTimeout]); // Removido hideControls das dependências
 
   useEffect(() => {
     if (!isSettingsOpen) {
@@ -337,26 +345,8 @@ export default function VideoPlayer({
     }
   }, [isSettingsOpen]);
 
-  const triggerNextEpisodeOverlay = useCallback(() => {
-    if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) return;
-    setEndingTriggered(true);
-    setShowNextEpisodeOverlay(true);
-    setCountdown(5);
-    // Start countdown
-    setCountdown(5);
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    countdownIntervalRef.current = setInterval(() => {
-        setCountdown(prev => {
-            if (prev <= 1) {
-                clearInterval(countdownIntervalRef.current!);
-                handlePlayNext(); // Auto play next episode
-                return 0;
-            }
-            return prev - 1;
-        });
-    }, 1000);
-  }, [endingTriggered, isAutoplayEnabled, hasNextEpisode, onNextEpisode]);
-
+  // CORREÇÃO: Lógica do Próximo Episódio movida para handleEnded
+  // const triggerNextEpisodeOverlay = useCallback(() => { ... }, []); // Removido
 
   const handleLoadStart = () => {
     if (!isPlayerActive) return;
@@ -386,9 +376,10 @@ export default function VideoPlayer({
     if (!videoRef.current) return;
     const { currentTime, duration } = videoRef.current;
     setCurrentTime(currentTime);
-    if (duration > 0 && duration - currentTime < 10 && !endingTriggered) {
-      triggerNextEpisodeOverlay();
-    }
+    // CORREÇÃO: Removida a lógica de trigger do próximo episódio baseada no tempo
+    // if (duration > 0 && duration - currentTime < 10 && !endingTriggered) {
+    //   triggerNextEpisodeOverlay();
+    // }
     try {
       const buf = videoRef.current.buffered;
       if (buf && buf.length > 0) { setBufferedEnd(buf.end(buf.length - 1)); }
@@ -400,50 +391,65 @@ export default function VideoPlayer({
     setDuration(videoRef.current.duration || 0)
   }
 
+  // CORREÇÃO: Lógica do próximo episódio centralizada aqui
   const handleEnded = () => {
-    triggerNextEpisodeOverlay();
-    setIsPlaying(false)
+    setIsPlaying(false); // Define como pausado ao terminar
+    if (!endingTriggered && isAutoplayEnabled && hasNextEpisode && onNextEpisode) {
+      setEndingTriggered(true);
+      setShowNextEpisodeOverlay(true);
+      // Inicia imediatamente o próximo episódio
+      handlePlayNext();
+    }
   };
 
   const handlePlayNext = useCallback(() => {
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    setShowNextEpisodeOverlay(false);
-    onNextEpisode?.();
+    // CORREÇÃO: Não precisa mais limpar intervalo
+    // if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    setShowNextEpisodeOverlay(false); // Esconde o overlay (embora mal apareça)
+    onNextEpisode?.(); // Chama a função para carregar o próximo
   }, [onNextEpisode]);
 
+  // CORREÇÃO: Função de cancelar não é mais necessária da mesma forma,
+  // mas pode ser mantida se houver um overlay de cancelamento futuro
   const handleCancelAutoplay = () => {
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    // if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setShowNextEpisodeOverlay(false);
-    setShowControls(true)
-    if (videoRef.current) {
-      videoRef.current.currentTime = videoRef.current.duration;
-    }
+    setEndingTriggered(false); // Permite tentar de novo
+    // resetControlsTimeout(); // Mostra controles se cancelar
+    // if (videoRef.current) {
+    //   videoRef.current.currentTime = videoRef.current.duration; // Vai para o final
+    // }
   };
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
 
+    // CORREÇÃO: Se estiver no final e for dado play, reinicia
+    if (v.ended) {
+        v.currentTime = 0;
+        v.play().catch(handleError);
+        setEndingTriggered(false); // Reseta o trigger do final
+        setShowNextEpisodeOverlay(false); // Esconde o overlay
+        return;
+    }
+
     if (v.paused) {
-        // CORREÇÃO DO BUG DE PLAY/PAUSE REPETITIVO
         const playPromise = v.play();
         if (playPromise !== undefined) {
             playPromise.then(() => {
-                // Play bem-sucedido
+                resetControlsTimeout(); // Esconde controles após play
             }).catch(error => {
-                // Ignora o erro de interrupção (DOMException: The play() request was interrupted)
-                // Se for um erro de verdade, chame o handleError
                 if (error.name !== "AbortError") {
                     console.warn("Play interrupted or failed, ignoring:", error);
-                    // Não chamamos handleError() para o erro de interrupção,
-                    // pois o vídeo pode não estar de fato quebrado.
                 }
             });
         }
     } else {
         v.pause();
+        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); // Mantém controles visíveis ao pausar
     }
-  }, []);
+  }, [resetControlsTimeout]);
 
   const seek = useCallback((amount: number) => {
     const v = videoRef.current
@@ -483,27 +489,36 @@ export default function VideoPlayer({
     setVolume(newVolume)
     setIsMuted(newVolume === 0)
     try { localStorage.setItem(volumeKey, String(newVolume)) } catch { }
-    // Don't reset timeout here, keep slider visible while dragging
+    // CORREÇÃO: Não reseta o timeout geral, mas cancela o timeout de esconder o slider
+    if (volumeSliderTimeoutRef.current) clearTimeout(volumeSliderTimeoutRef.current);
+    // Don't reset general controls timeout
     // resetControlsTimeout();
   }
 
-  // ADICIONADO: Funções de mouse enter/leave da barra de volume
-  const handleVolumeMouseEnter = () => {
+  // CORREÇÃO: Lógica de hover da área de volume
+  const handleVolumeAreaMouseEnter = () => {
+    setIsHoveringVolumeArea(true);
+    if (volumeSliderTimeoutRef.current) {
+        clearTimeout(volumeSliderTimeoutRef.current);
+    }
+    setIsVolumeSliderVisible(true);
+    // Cancela o timeout de esconder controles gerais
     if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current); // Keep controls visible
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null; // Indica que foi cancelado
     }
-    if (volumeTimeoutRef.current) {
-      clearTimeout(volumeTimeoutRef.current);
-    }
-    setIsVolumeOpen(true);
   };
 
-  const handleVolumeMouseLeave = () => {
-    volumeTimeoutRef.current = setTimeout(() => {
-      setIsVolumeOpen(false);
-      resetControlsTimeout(); // Reset controls timeout when mouse leaves volume area
-    }, 200); // 200ms delay to allow moving to the slider
+  const handleVolumeAreaMouseLeave = () => {
+    setIsHoveringVolumeArea(false);
+    // Agenda o fechamento do slider de volume
+    volumeSliderTimeoutRef.current = setTimeout(() => {
+        setIsVolumeSliderVisible(false);
+    }, 200); // Delay para permitir mover para o slider
+    // Reinicia o timeout para esconder os controles gerais
+    resetControlsTimeout();
   };
+
 
   const toggleFullscreen = useCallback(async () => {
     const video = videoRef.current;
@@ -913,8 +928,8 @@ export default function VideoPlayer({
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onPlay={() => { setIsPlaying(true); resetControlsTimeout(); }} // CORREÇÃO: Reseta timeout ao dar play
+          onPause={() => { setIsPlaying(false); if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); }} // CORREÇÃO: Cancela timeout ao pausar
           onEnded={handleEnded}
           preload="metadata"
           playsInline // Important for mobile playback without fullscreen
@@ -1021,7 +1036,7 @@ export default function VideoPlayer({
           )}
         </AnimatePresence>
 
-        {/* Next Episode Overlay */}
+        {/* Next Episode Overlay (Agora apenas um indicador rápido, pois a transição é imediata) */}
         <AnimatePresence>
           {showNextEpisodeOverlay && isPlayerActive && (
             <motion.div
@@ -1029,15 +1044,9 @@ export default function VideoPlayer({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90"
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 pointer-events-none" // Adicionado pointer-events-none
             >
-              <p className="text-white text-lg mb-6 font-semibold">
-                Próximo episódio em {countdown}
-              </p>
-              <div className="flex gap-4">
-                <Button onClick={handlePlayNext} className="bg-white text-black hover:bg-zinc-200">Assistir</Button>
-                <Button onClick={handleCancelAutoplay} variant="secondary">Cancelar</Button>
-              </div>
+               <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -1068,18 +1077,17 @@ export default function VideoPlayer({
         <AnimatePresence>
         {isPlayerActive && (
             <motion.div
-            initial={{ opacity: 0, y: 20 }} // Initial state: invisible and slightly down
-            animate={{ opacity: showControls && !showNextEpisodeOverlay ? 1 : 0, y: showControls && !showNextEpisodeOverlay ? 0 : 20 }} // Animate to visible and original position, or back
-            exit={{ opacity: 0, y: 20 }} // Animate out
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: showControls && !showNextEpisodeOverlay ? 1 : 0, y: showControls && !showNextEpisodeOverlay ? 0 : 20 }}
+            exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.2 }}
             data-controls
             style={{ transform: 'translateZ(0)' }}
             className={cn(
-                "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-4 md:px-4", // No background gradient here
-                // Hide completely when not shown
+                "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-4 md:px-4",
                 !(showControls && !showNextEpisodeOverlay) && "invisible pointer-events-none"
             )}
-             // Add mouse listeners to keep controls visible when hovering over them
+             // CORREÇÃO: Mouse enter/leave nos controles agora cancelam/reiniciam o timeout
              onMouseEnter={() => {
                 if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
              }}
@@ -1092,54 +1100,47 @@ export default function VideoPlayer({
                     ref={progressWrapRef}
                     onMouseMove={onProgressMouseMove}
                     onMouseLeave={onProgressLeave}
-                    className="group/progress relative mb-1 cursor-pointer h-12" // MODIFICAÇÃO: Aumentada altura para h-12 e removido padding
-                    style={{ zIndex: 1 }} // Ensure progress bar is above the gray bar
+                    className="group/progress relative mb-1 cursor-pointer h-12"
+                    style={{ zIndex: 1 }}
                 >
                     {/* Thumbnail Preview */}
                     <div
-                        className="absolute bottom-10 -translate-x-1/2 bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10 overflow-hidden" // MODIFICAÇÃO: Alterado de 'bottom-full mb-2' para 'bottom-10'
+                        className="absolute bottom-10 -translate-x-1/2 bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10 overflow-hidden"
                         style={{
                         left: hoverLeft,
                         visibility: hoverTime !== null ? 'visible' : 'hidden',
                         }}
                     >
-                        {/* Ensure canvas exists before rendering */}
                         {currentSource.thumbnailUrl && thumbnailVideoRef.current && (
                             <canvas
                                 ref={canvasRef}
-                                className="block aspect-video w-52 bg-black" // MODIFICAÇÃO: Aumentado de w-36 para w-52
+                                className="block aspect-video w-52 bg-black"
                             />
                         )}
                         <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
                     </div>
 
                     {/* Slider */}
-                    {/* MODIFICAÇÃO: Container do Slider agora é 'absolute' para se posicionar dentro do 'h-12' do pai */}
-                    <div className="absolute bottom-2 left-0 right-0 px-1 md:px-0 flex items-center h-3 group-hover/progress:h-4 transition-[height] duration-200"> {/* MODIFICAÇÃO: Aumentada altura h-3 e group-hover h-4 */}
-                        {/* Background Track */}
-                        <div className="absolute top-1/2 -translate-y-1/2 h-2 group-hover/progress:h-3 w-full bg-white/20 rounded-full"/> {/* MODIFICAÇÃO: Aumentada altura h-2 e group-hover h-3 */}
-                        {/* Buffer Track */}
-                        <div className="absolute top-1/2 -translate-y-1/2 h-2 group-hover/progress:h-3 bg-white/40 rounded-full" style={{ width: `${bufferPercentage}%` }} /> {/* MODIFICAÇÃO: Aumentada altura h-2 e group-hover h-3 */}
-                        {/* Progress Slider Component */}
+                    <div className="absolute bottom-2 left-0 right-0 px-1 md:px-0 flex items-center h-3 group-hover/progress:h-4 transition-[height] duration-200">
+                        <div className="absolute top-1/2 -translate-y-1/2 h-2 group-hover/progress:h-3 w-full bg-white/20 rounded-full"/>
+                        <div className="absolute top-1/2 -translate-y-1/2 h-2 group-hover/progress:h-3 bg-white/40 rounded-full" style={{ width: `${bufferPercentage}%` }} />
                         <Slider
                             value={[Math.min(currentTime, duration || 0)]}
                             max={duration || 100}
                             step={0.1}
                             onValueChange={handleSeekSlider}
-                            className="absolute w-full inset-0 h-full cursor-pointer" // Make slider fill the container and have pointer cursor
-                            trackClassName="bg-transparent h-full" // Track is invisible
-                            rangeClassName="bg-white h-2 group-hover/progress:h-3 absolute top-1/2 -translate-y-1/2 rounded-full" // MODIFICAÇÃO: Espessura h-2 e group-hover h-3
-                            // Thumb visibility controlled by Slider component based on value
+                            className="absolute w-full inset-0 h-full cursor-pointer"
+                            trackClassName="bg-transparent h-full"
+                            rangeClassName="bg-white h-2 group-hover/progress:h-3 absolute top-1/2 -translate-y-1/2 rounded-full"
                             thumbClassName={cn(
-                                "bg-white border-white h-4 w-4 transition-opacity block", // MODIFICAÇÃO: Tamanho do Thumb h-4 w-4
-                                "group-hover/progress:opacity-100 opacity-0" // Show thumb only on hover
+                                "bg-white border-white h-4 w-4 transition-opacity block",
+                                "group-hover/progress:opacity-100 opacity-0"
                              )}
                         />
                     </div>
                 </div>
 
                 {/* Solid Dark Gray Control Bar */}
-                 {/* MODIFICAÇÃO: Aumentado padding vertical py-2 e md:py-2.5 */}
                 <div className="bg-zinc-800 rounded-md md:rounded-lg px-2 py-2 md:px-3 md:py-2.5 flex items-center justify-between relative" style={{ zIndex: 0 }}>
                     {/* Left Controls */}
                     <div className="flex items-center gap-1.5 md:gap-2.5">
@@ -1166,11 +1167,11 @@ export default function VideoPlayer({
                             <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
                         </Tooltip>
 
-                         {/* Volume Control Group */}
+                         {/* MODIFICAÇÃO: Volume Control Group - Horizontal */}
                         <div
                             className="relative flex items-center"
-                            onMouseEnter={handleVolumeMouseEnter}
-                            onMouseLeave={handleVolumeMouseLeave}
+                            onMouseEnter={handleVolumeAreaMouseEnter}
+                            onMouseLeave={handleVolumeAreaMouseLeave}
                         >
                             {/* Volume Button */}
                              <Tooltip>
@@ -1186,28 +1187,28 @@ export default function VideoPlayer({
                                 </TooltipTrigger>
                                 <TooltipContent>Mutar (M)</TooltipContent>
                              </Tooltip>
-                            {/* Vertical Volume Slider */}
+                            {/* Horizontal Volume Slider */}
                             <AnimatePresence>
-                                {isVolumeOpen && (
+                                {isVolumeSliderVisible && ( // Usa o novo estado
                                     <motion.div
-                                        initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                                        initial={{ opacity: 0, x: -10, scale: 0.9 }} // Anima da esquerda
+                                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                                        exit={{ opacity: 0, x: -10, scale: 0.9 }}
                                         transition={{ duration: 0.15 }}
-                                        className="absolute bottom-full left-0 right-0 mx-auto w-fit mb-3 bg-zinc-800 rounded-md p-2 shadow-lg"
-                                        onMouseEnter={handleVolumeMouseEnter} // Keep open when hovering slider area
-                                        onMouseLeave={handleVolumeMouseLeave}
+                                        // Posiciona à direita do botão, centralizado verticalmente
+                                        className="absolute left-full top-1/2 -translate-y-1/2 ml-2 bg-zinc-800 rounded-md px-3 py-2 shadow-lg"
                                     >
                                         <Slider
-                                            orientation="vertical"
+                                            // orientation="horizontal" // Default
                                             value={[volume]}
                                             onValueChange={handleVolumeChange}
                                             max={1}
                                             step={0.01}
-                                            className="h-20 w-4 flex-col cursor-pointer" // Adjusted width and added cursor
-                                            trackClassName="bg-white/30 w-1.5 h-full rounded-full" // Thinner track
-                                            rangeClassName="bg-white w-full rounded-full" // White fill
-                                            thumbClassName="h-3 w-3 bg-white border-white block" // Visible thumb
+                                            // Define largura e altura para horizontal
+                                            className="w-20 h-4 flex items-center cursor-pointer"
+                                            trackClassName="bg-white/30 h-1.5 w-full rounded-full"
+                                            rangeClassName="bg-white h-full rounded-full"
+                                            thumbClassName="h-3 w-3 bg-white border-white block"
                                         />
                                     </motion.div>
                                 )}
@@ -1265,10 +1266,9 @@ export default function VideoPlayer({
                                 className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur ring-1 ring-white/10"
                                 side="top"
                                 align="end"
-                                avoidCollisions // Prevent overflow
-                                // Use containerRef for better positioning within the player
+                                avoidCollisions
                                 container={containerRef.current}
-                                style={{ zIndex: 2147483647 }} // High z-index if needed
+                                style={{ zIndex: 2147483647 }}
                              >
                                 {/* Popover Content */}
                                 {settingsMenu === 'main' && (
@@ -1287,7 +1287,6 @@ export default function VideoPlayer({
                                             <span className="flex items-center gap-2">Velocidade</span>
                                             <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
                                         </Button>
-                                         {/* MODIFICAÇÃO: Removida a condição sources.length > 1 */}
                                          <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
                                              <span className="flex items-center gap-2">Qualidade</span>
                                              <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
