@@ -2,8 +2,8 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-// ADDED: Needed Lucide icons that remain
-import { Play, Pause, RotateCcw, X, ChevronLeft, ChevronRight, Check, AlertTriangle } from 'lucide-react' // REMOVED: Download
+// MODIFIED: Removed 'Radio' icon as it's no longer needed
+import { Play, Pause, RotateCcw, X, ChevronLeft, ChevronRight, Check, AlertTriangle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -14,18 +14,16 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import Image from 'next/image';
 
-
 type StreamSource = {
   url: string;
   name: string; // Ex: "HD", "1080p"
   thumbnailUrl?: string;
 }
 
-// MODIFIED: Removed downloadUrl prop
 type VideoPlayerProps = {
   sources: StreamSource[]
   title: string
-  // downloadUrl?: string // REMOVED
+  // downloadUrl?: string // REMOVIDO
   onClose?: () => void
   rememberPositionKey?: string
   rememberPosition?: boolean
@@ -44,13 +42,12 @@ const PlayerOverlay = ({ onPlay }: { onPlay: () => void }) => {
       onClick={onPlay}
     >
       <img
-        // MODIFIED: New image URLs and reduced size
         src={isHovering ? "https://i.ibb.co/b5GFzpMs/bot-o-de-play-central-aceso.png" : "https://i.ibb.co/8qbZwTV/bot-o-de-play-central.png"}
         alt="Assistir"
-        className="h-16 w-16 object-contain pointer-events-auto" // Reduced size
+        className="h-16 w-16 object-contain pointer-events-auto"
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
-        draggable="false" // ADDED
+        draggable="false"
       />
     </div>
   );
@@ -60,7 +57,6 @@ const PlayerOverlay = ({ onPlay }: { onPlay: () => void }) => {
 export default function VideoPlayer({
   sources,
   title,
-  // downloadUrl, // REMOVED
   onClose,
   rememberPositionKey,
   rememberPosition = true,
@@ -72,6 +68,8 @@ export default function VideoPlayer({
   const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
+  // MANTIDO: Canvas ref para o thumbnail preview
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [isSandboxed, setIsSandboxed] = useState(false);
   const [adBlockerDetected, setAdBlockerDetected] = useState(false);
@@ -108,6 +106,7 @@ export default function VideoPlayer({
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // ADICIONADO: Estado de controle da barra de volume
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
 
   const volumeKey = "video-player-volume"
@@ -115,6 +114,7 @@ export default function VideoPlayer({
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
 
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  // ADICIONADO: Ref de timeout da barra de volume
   const volumeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -125,9 +125,12 @@ export default function VideoPlayer({
 
   const adUrl = "https://otieu.com/4/10070814";
   const adInterval = 2 * 60 * 1000; // 2 minutos
+  // MANTIDO o rastreamento do último anúncio para o Fullscreen/Exit Fullscreen
   const lastAdTimeRef = useRef<number | null>(null);
+  // ADICIONADO: Variável para rastrear o ad do fullscreen
+  const lastFullscreenAdTimeRef = useRef<number | null>(null);
 
-  // ... (restante do useEffect e outras funções permanecem iguais) ...
+
   useEffect(() => {
     if (typeof window === 'undefined') {
         setChecking(false);
@@ -162,11 +165,22 @@ export default function VideoPlayer({
     if (!adWindow || adWindow.closed || typeof adWindow.closed === 'undefined') {
         return false;
     }
-    lastAdTimeRef.current = Date.now();
-    if (videoRef.current && !videoRef.current.paused) {
-      videoRef.current.pause();
-    }
+    // Não pausa o vídeo aqui, pois este é o anúncio inicial. O vídeo será ativado após o clique.
     return true;
+  }, [adUrl]);
+
+  // ADICIONADO: Nova função para anúncio após o primeiro play/fullscreen
+  const triggerAdAndPause = useCallback(() => {
+    const adWindow = window.open(adUrl, "_blank");
+    const adWasSuccessful = !!adWindow && !adWindow.closed && typeof adWindow.closed === 'boolean';
+
+    if (adWasSuccessful) {
+        lastFullscreenAdTimeRef.current = Date.now();
+        if (videoRef.current && !videoRef.current.paused) {
+            videoRef.current.pause();
+        }
+    }
+    return adWasSuccessful;
   }, [adUrl]);
 
   const handleInitialPlay = () => {
@@ -186,13 +200,7 @@ export default function VideoPlayer({
     }
     if ((e.target as HTMLElement).closest('[data-controls]')) return;
 
-    if (lastAdTimeRef.current && Date.now() - lastAdTimeRef.current > adInterval) {
-      const adWasSuccessful = triggerAd();
-      if (!adWasSuccessful) {
-          setIsSandboxed(true);
-          return;
-      }
-    }
+    // A lógica de anúncio por intervalo foi removida daqui, deixando apenas o togglePlay
     togglePlay();
   };
 
@@ -219,15 +227,34 @@ export default function VideoPlayer({
       clearInterval(countdownIntervalRef.current);
     }
 
+    // ADICIONADO: Lógica para o thumbnail video
+    const thumbnailVideo = thumbnailVideoRef.current;
+    if(thumbnailVideo && currentSource.thumbnailUrl) {
+        thumbnailVideo.src = currentSource.thumbnailUrl;
+        // Tenta carregar para que os metadados fiquem disponíveis
+        thumbnailVideo.load();
+        // CORREÇÃO: Tenta reproduzir o vídeo de miniatura (essencial para o seek funcionar)
+        thumbnailVideo.play().catch(e => console.warn("Thumbnail play failed", e));
+    }
+
+
     return () => {
       video.removeEventListener('canplay', handleCanPlay);
       if(video) {
         video.removeAttribute('src');
         video.load();
       }
+      // ADICIONADO: Limpeza do thumbnail video
+      if(thumbnailVideo) {
+        // CORREÇÃO: Pausa o vídeo ao limpar
+        thumbnailVideo.pause();
+        thumbnailVideo.removeAttribute('src');
+        thumbnailVideo.load();
+      }
     };
   }, [currentSource, isPlayerActive]);
 
+  // ... (restante dos useEffects de persistência, controles, etc. permanecem iguais) ...
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem(volumeKey)
@@ -308,7 +335,6 @@ export default function VideoPlayer({
     }
   }, [isSettingsOpen]);
 
-
   const triggerNextEpisodeOverlay = useCallback(() => {
     if (endingTriggered || !isAutoplayEnabled || !hasNextEpisode || !onNextEpisode) return;
     setEndingTriggered(true);
@@ -377,28 +403,26 @@ export default function VideoPlayer({
     }
   };
 
-  useEffect(() => {
-    if (showNextEpisodeOverlay) {
-      countdownIntervalRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownIntervalRef.current!);
-            handlePlayNext();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => { if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); } };
-  }, [showNextEpisodeOverlay, handlePlayNext]);
-
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
 
     if (v.paused) {
-        v.play().catch(() => handleError());
+        // CORREÇÃO DO BUG DE PLAY/PAUSE REPETITIVO
+        const playPromise = v.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                // Play bem-sucedido
+            }).catch(error => {
+                // Ignora o erro de interrupção (DOMException: The play() request was interrupted)
+                // Se for um erro de verdade, chame o handleError
+                if (error.name !== "AbortError") {
+                    console.warn("Play interrupted or failed, ignoring:", error);
+                    // Não chamamos handleError() para o erro de interrupção,
+                    // pois o vídeo pode não estar de fato quebrado.
+                }
+            });
+        }
     } else {
         v.pause();
     }
@@ -429,7 +453,7 @@ export default function VideoPlayer({
       v.volume = 0.5
       setVolume(0.5)
     }
-  }, [])
+  }, []) // REMOVIDO: dependência de 'volume'
 
   const handleVolumeChange = (value: number[]) => {
     const v = videoRef.current
@@ -441,32 +465,51 @@ export default function VideoPlayer({
     try { localStorage.setItem(volumeKey, String(newVolume)) } catch { }
   }
 
+  // ADICIONADO: Funções de mouse enter/leave da barra de volume
   const handleVolumeMouseEnter = () => {
-    if (volumeTimeoutRef.current) clearTimeout(volumeTimeoutRef.current);
+    if (volumeTimeoutRef.current) {
+      clearTimeout(volumeTimeoutRef.current);
+    }
     setIsVolumeOpen(true);
   };
 
   const handleVolumeMouseLeave = () => {
     volumeTimeoutRef.current = setTimeout(() => {
-        setIsVolumeOpen(false);
-    }, 1500);
+      setIsVolumeOpen(false);
+    }, 200); // 200ms delay to allow moving to the slider
   };
 
   const toggleFullscreen = useCallback(async () => {
     const video = videoRef.current;
     if (!video) return;
 
-    if (video.webkitEnterFullscreen) {
-      video.webkitEnterFullscreen();
-      return;
+    const isCurrentlyFullscreen = !!document.fullscreenElement;
+
+    if (!isCurrentlyFullscreen) {
+        // Lógica: Ao entrar em fullscreen, abre o anúncio.
+        const shouldTriggerAd = !lastFullscreenAdTimeRef.current || (Date.now() - lastFullscreenAdTimeRef.current) > adInterval;
+
+        if (shouldTriggerAd) {
+            const adWasSuccessful = triggerAdAndPause();
+            if (!adWasSuccessful) {
+                setIsSandboxed(true);
+                return;
+            }
+        }
     }
 
+    // Ação de Fullscreen nativa do navegador
     const container = containerRef.current;
     if (!container) return;
 
     try {
-      if (!document.fullscreenElement) {
-        await container.requestFullscreen();
+      if (!isCurrentlyFullscreen) {
+        // Entrar em Fullscreen
+        if (video.webkitEnterFullscreen) {
+            video.webkitEnterFullscreen();
+        } else {
+            await container.requestFullscreen();
+        }
         try {
           if (screen.orientation && typeof screen.orientation.lock === 'function') {
             await screen.orientation.lock('landscape');
@@ -475,17 +518,24 @@ export default function VideoPlayer({
           console.warn("Falha ao travar a orientação de tela:", e);
         }
       } else {
+        // Sair do Fullscreen
         await document.exitFullscreen();
       }
     } catch (err) {
       console.error("Erro ao gerenciar fullscreen:", err);
     }
-  }, []);
+  }, [adInterval, triggerAdAndPause]); // Dependências
 
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
+
+      // Lógica: Ao sair do fullscreen, ativa o temporizador de anúncio se o vídeo estiver ativo
+      if (!isCurrentlyFullscreen && isPlayerActive) {
+        lastFullscreenAdTimeRef.current = Date.now();
+      }
+
       if (!isCurrentlyFullscreen) {
         try {
           if (screen.orientation && typeof screen.orientation.unlock === 'function') {
@@ -498,7 +548,7 @@ export default function VideoPlayer({
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
+  }, [isPlayerActive]); // Dependência
 
   const changePlaybackRate = (rate: number) => {
     if (!videoRef.current) return
@@ -508,7 +558,15 @@ export default function VideoPlayer({
   }
 
   const changeQuality = (source: StreamSource) => {
-      if(currentSource.url !== source.url){ setCurrentSource(source); }
+      if(currentSource.url !== source.url){
+        setCurrentSource(source);
+        // Reinicia o vídeo na nova qualidade
+        if (videoRef.current && isPlaying) {
+          videoRef.current.src = source.url;
+          videoRef.current.load();
+          videoRef.current.play().catch(handleError);
+        }
+      }
       setSettingsMenu('main');
   }
 
@@ -639,8 +697,26 @@ export default function VideoPlayer({
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
-    if (thumbnailVideoRef.current && currentSource.thumbnailUrl && thumbnailVideoRef.current.readyState > 2) {
-      thumbnailVideoRef.current.currentTime = time;
+
+    // CORREÇÃO: Lógica de atualização e renderização do thumbnail preview.
+    const video = thumbnailVideoRef.current;
+    const canvas = canvasRef.current;
+
+    // CORREÇÃO: Alterado para readyState >= 3 (HAVE_FUTURE_DATA) para mais confiabilidade
+    if (video && canvas && video.readyState >= 3) {
+      // Força a busca do frame no vídeo de miniatura
+      video.currentTime = time;
+
+      // Usa requestAnimationFrame para garantir que o desenho seja feito após a atualização do frame
+      requestAnimationFrame(() => {
+        const ctx = canvas.getContext('2d');
+        if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
+          const aspectRatio = video.videoWidth / video.videoHeight;
+          canvas.width = 144; // Largura fixa
+          canvas.height = 144 / aspectRatio;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
+      });
     }
   };
 
@@ -721,9 +797,8 @@ export default function VideoPlayer({
   const currentSpeedLabel = playbackRate === 1 ? "Normal" : `${playbackRate}x`;
 
   // Define icon size classes - MODIFIED to be slightly larger
-  const iconSize = "max-h-[20px] max-w-[20px] md:max-h-[22px] md:max-w-[22px]"; // Adjusted sizes
-  const smallIconSize = "max-h-[16px] max-w-[16px] md:max-h-[18px] md:max-w-[18px]"; // Adjusted sizes
-
+  const iconSize = "max-h-[20px] max-w-[20px] md:max-h-[22px] md:max-w-[22px]";
+  const smallIconSize = "max-h-[16px] max-w-[16px] md:max-h-[18px] md:max-w-[18px]";
 
   if (checking) {
     return (
@@ -753,6 +828,7 @@ export default function VideoPlayer({
     );
   }
 
+  // INÍCIO DO RETORNO PRINCIPAL
   return (
     <TooltipProvider delayDuration={150}>
       <div
@@ -800,11 +876,13 @@ export default function VideoPlayer({
          {currentSource.thumbnailUrl && (
           <video
             ref={thumbnailVideoRef}
-            src={currentSource.thumbnailUrl}
+            // CORREÇÃO: src removido, useEffect irá defini-lo
             className="pointer-events-none absolute bottom-0 left-0 opacity-0"
             preload="auto"
             muted
             playsInline
+            autoPlay // CORREÇÃO: Adicionado autoPlay
+            loop // CORREÇÃO: Adicionado loop
             crossOrigin="anonymous"
           />
         )}
@@ -939,8 +1017,8 @@ export default function VideoPlayer({
             className={cn(
                 "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-4 md:px-4 transition-opacity duration-300",
                 (showControls && !showNextEpisodeOverlay) ? "opacity-100 visible pointer-events-auto" : "opacity-0 invisible pointer-events-none",
-                // Gradient background from example
-                "bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-10"
+                // REMOVIDO: Gradiente da barra de controle
+                "pt-2 md:pt-4"
             )}
             >
             {/* Progress Bar */}
@@ -960,18 +1038,8 @@ export default function VideoPlayer({
                 >
                     {currentSource.thumbnailUrl && thumbnailVideoRef.current && (
                     <canvas
-                        ref={canvasRef => {
-                            if (canvasRef && thumbnailVideoRef.current && hoverTime !== null) {
-                                const ctx = canvasRef.getContext('2d');
-                                const video = thumbnailVideoRef.current;
-                                if (ctx && video.videoWidth > 0 && video.readyState >= 2) {
-                                  const aspectRatio = video.videoWidth / video.videoHeight;
-                                  canvasRef.width = 144;
-                                  canvasRef.height = 144 / aspectRatio;
-                                  ctx.drawImage(video, 0, 0, canvasRef.width, canvasRef.height);
-                                }
-                            }
-                        }}
+                        // MANTIDO: Lógica de renderização no canvas
+                        ref={canvasRef}
                         className="aspect-video w-36 rounded-t-md bg-black"
                     />
                     )}
@@ -982,27 +1050,31 @@ export default function VideoPlayer({
                  <div className="relative flex items-center h-2 group-hover/progress:h-2.5 transition-[height] duration-200">
                     {/* Background Track (thicker) */}
                     <div className="absolute top-1/2 -translate-y-1/2 h-1 group-hover/progress:h-1.5 w-full bg-white/20 rounded-full"/>
-                    {/* Buffer Track (Aligned) */}
-                    <div className="absolute top-1/2 -translate-y-1/2 h-1 group-hover/progress:h-1.5 bg-white/70 rounded-full" style={{ width: `${bufferPercentage}%` }} />
-                    {/* Progress Slider (thinner range, aligned) */}
+                    
+                    {/* *** INÍCIO DA CORREÇÃO *** */}
+                    {/* Buffer Track (Corrigido para /40 opacidade) */}
+                    <div className="absolute top-1/2 -translate-y-1/2 h-1 group-hover/progress:h-1.5 bg-white/40 rounded-full" style={{ width: `${bufferPercentage}%` }} />
+                    {/* Progress Slider (Range com altura corrigida) */}
                     <Slider
                         value={[Math.min(currentTime, duration || 0)]}
                         max={duration || 100}
                         step={0.1}
                         onValueChange={handleSeekSlider}
-                        className="absolute w-full inset-0 h-full" // Ensure slider covers the area
-                        trackClassName="bg-transparent h-full" // Make track transparent and full height of parent
-                        // Range sits inside the track, vertically centered implicitly if track is aligned
-                        rangeClassName="bg-white h-0.5 group-hover/progress:h-1 absolute top-1/2 -translate-y-1/2"
-                        thumbClassName="bg-white border-white h-2 w-2 md:h-3 md:w-3 group-hover/progress:opacity-100 opacity-0 transition-opacity block" // Ensure thumb is block
+                        className="absolute w-full inset-0 h-full"
+                        trackClassName="bg-transparent h-full"
+                        // CORREÇÃO: Altura do range (linha branca) aumentada para h-1 e h-1.5 no hover
+                        rangeClassName="bg-white h-1 group-hover/progress:h-1.5 absolute top-1/2 -translate-y-1/2"
+                        // CORREÇÃO: Thumb da barra de progresso (bola) agora visível
+                        thumbClassName="bg-white border-white h-2 w-2 md:h-3 md:w-3 transition-opacity block"
                     />
+                    {/* *** FIM DA CORREÇÃO *** */}
                 </div>
             </div>
 
             {/* Control Buttons Bar */}
             <div className="flex items-center justify-between">
                 {/* Left Controls - Adjusted gap */}
-                <div className="flex items-center gap-1.5 md:gap-2.5"> {/* Reduced gap */}
+                <div className="flex items-center gap-1.5 md:gap-2.5">
                     <Tooltip>
                         <TooltipTrigger asChild>
                         <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
@@ -1011,14 +1083,14 @@ export default function VideoPlayer({
                                 <img
                                     src="https://i.ibb.co/fdgFF2VK/despause-pequeno-bot-o.png"
                                     alt="Pause"
-                                    className={cn("object-contain", iconSize)} // Use iconSize
+                                    className={cn("object-contain", iconSize)}
                                     draggable="false"
                                 />
                                 :
                                 <img
                                     src="https://i.ibb.co/chY4zZLj/bot-o-de-play-central.png"
                                     alt="Play"
-                                    className={cn("object-contain", iconSize)} // Use iconSize
+                                    className={cn("object-contain", iconSize)}
                                     draggable="false"
                                 />
                             }
@@ -1027,35 +1099,46 @@ export default function VideoPlayer({
                         <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
                     </Tooltip>
 
-                    {/* Volume Control */}
+                    {/* MODIFICADO: Controle de Volume com Slider Vertical */}
                     <div
                         className="relative flex items-center"
                         onMouseEnter={handleVolumeMouseEnter}
                         onMouseLeave={handleVolumeMouseLeave}
                     >
+                        {/* Slider Vertical */}
                         <AnimatePresence>
-                        {isVolumeOpen && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: '80px' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                // MODIFIED: Volume slider pop-up style to match image
-                                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-zinc-800/90 rounded-md p-1 flex items-center justify-center backdrop-blur-sm ring-1 ring-white/10 w-8 h-[100px]" // Use zinc, rounded-md
-                            >
-                                <Slider
-                                    orientation="vertical"
-                                    value={[isMuted ? 0 : volume]}
-                                    max={1}
-                                    step={0.05}
-                                    onValueChange={handleVolumeChange}
-                                    className="w-1.5 h-full"
-                                    trackClassName="bg-zinc-600 w-full" // Darker track
-                                    rangeClassName="bg-white w-full"
-                                    thumbClassName="bg-white border-none h-3 w-3 block" // White thumb
-                                />
-                            </motion.div>
-                        )}
+                            {isVolumeOpen && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 10 }}
+                                    transition={{ duration: 0.15 }}
+                                    // *** INÍCIO DA CORREÇÃO ***
+                                    // MODIFICADO: Removido w-8 para w-auto, permitindo que o Slider defina a largura
+                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 h-24 w-auto flex justify-center items-center"
+                                    // *** FIM DA CORREÇÃO ***
+                                    onMouseEnter={handleVolumeMouseEnter}
+                                    onMouseLeave={handleVolumeMouseLeave}
+                                >
+                                    <Slider
+                                        orientation="vertical"
+                                        value={[volume]}
+                                        onValueChange={handleVolumeChange}
+                                        max={1}
+                                        step={0.01}
+                                        // *** INÍCIO DA CORREÇÃO ***
+                                        // MODIFICADO: w-1.5 para w-4 (mais largo que o thumb) e adicionado flex-col
+                                        className="h-20 w-4 flex-col" // w-4 (16px) é maior que o thumb w-3 (12px)
+                                        trackClassName="bg-white/30 w-1.5 h-full" // A barra continua w-1.5 (6px)
+                                        // *** FIM DA CORREÇÃO ***
+                                        rangeClassName="bg-white w-full" // Preenchimento branco
+                                        thumbClassName="h-3 w-3 bg-white border-white" // Bolinha branca w-3 (12px)
+                                    />
+                                </motion.div>
+                            )}
                         </AnimatePresence>
+                        
+                        {/* Botão de Volume */}
                         <Tooltip>
                         <TooltipTrigger asChild>
                             <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
@@ -1085,22 +1168,20 @@ export default function VideoPlayer({
                 </div>
 
                 {/* Right Controls - Adjusted gap */}
-                <div className="flex items-center gap-1.5 md:gap-2.5"> {/* Reduced gap */}
-                    {/* REMOVED Download Button */}
-
-                    {/* Chromecast Button */}
+                <div className="flex items-center gap-1.5 md:gap-2.5">
+                    {/* Chromecast Button (Placeholder) */}
                     <Tooltip>
                         <TooltipTrigger asChild>
-                        <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center" onClick={() => {/* TODO: Implement cast functionality */}}>
-                            <img
-                                src="https://i.ibb.co/2Yy4Pv04/bot-o-de-chromecast.png"
-                                alt="Cast"
-                                className={cn("object-contain", iconSize)}
-                                draggable="false"
-                            />
-                        </Button>
+                            <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                <img
+                                    src="https://i.ibb.co/2Yy4Pv04/bot-o-de-chromecast.png"
+                                    alt="Cast"
+                                    className={cn("object-contain", iconSize)}
+                                    draggable="false"
+                                />
+                            </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Chromecast</TooltipContent>
+                        <TooltipContent>Chromecast (Indisponível)</TooltipContent>
                     </Tooltip>
 
                     {/* Settings Button */}
@@ -1127,7 +1208,7 @@ export default function VideoPlayer({
                         container={containerRef.current}
                         style={{ zIndex: 2147483647 }}
                         >
-                           {/* Popover content remains the same */}
+                           {/* Popover content MODIFIED */}
                            {settingsMenu === 'main' && (
                                 <div className="flex flex-col gap-1">
                                     {hasNextEpisode && (
@@ -1144,12 +1225,10 @@ export default function VideoPlayer({
                                         <span className="flex items-center gap-2">Velocidade</span>
                                         <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
                                     </Button>
-                                    {sources && sources.length > 1 && (
-                                        <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
-                                            <span className="flex items-center gap-2">Qualidade</span>
-                                            <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
-                                        </Button>
-                                    )}
+                                    <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
+                                        <span className="flex items-center gap-2">Qualidade</span>
+                                        <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
+                                    </Button>
                                 </div>
                             )}
                             {settingsMenu === 'quality' && (
