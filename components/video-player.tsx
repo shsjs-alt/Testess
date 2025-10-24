@@ -3,7 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 // MODIFIED: Removed 'Radio' icon as it's no longer needed
-import { Play, Pause, RotateCcw, X, ChevronLeft, ChevronRight, Check, AlertTriangle } from 'lucide-react'
+import { Play, Pause, RotateCcw, X, ChevronLeft, ChevronRight, Check, AlertTriangle, Volume2, VolumeX, Settings, Maximize, Minimize, PictureInPicture } from 'lucide-react' // Import icons
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -299,6 +299,7 @@ export default function VideoPlayer({
 
   const hideControls = useCallback(() => {
     setShowControls(false);
+    setIsVolumeOpen(false); // Hide volume slider when controls hide
   }, []);
 
   const resetControlsTimeout = useCallback(() => {
@@ -314,7 +315,8 @@ export default function VideoPlayer({
     const container = containerRef.current;
     if (container) {
       container.addEventListener("mousemove", resetControlsTimeout);
-      container.addEventListener("mouseleave", hideControls);
+      // Removed mouseleave listener to keep controls visible when mouse is over them
+      // container.addEventListener("mouseleave", hideControls);
       container.addEventListener("touchstart", resetControlsTimeout, { passive: true });
     }
     resetControlsTimeout();
@@ -322,7 +324,7 @@ export default function VideoPlayer({
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       if (container) {
         container.removeEventListener("mousemove", resetControlsTimeout);
-        container.removeEventListener("mouseleave", hideControls);
+        // container.removeEventListener("mouseleave", hideControls);
         container.removeEventListener("touchstart", resetControlsTimeout);
       }
     };
@@ -340,6 +342,19 @@ export default function VideoPlayer({
     setEndingTriggered(true);
     setShowNextEpisodeOverlay(true);
     setCountdown(5);
+    // Start countdown
+    setCountdown(5);
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+            if (prev <= 1) {
+                clearInterval(countdownIntervalRef.current!);
+                handlePlayNext(); // Auto play next episode
+                return 0;
+            }
+            return prev - 1;
+        });
+    }, 1000);
   }, [endingTriggered, isAutoplayEnabled, hasNextEpisode, onNextEpisode]);
 
 
@@ -391,11 +406,13 @@ export default function VideoPlayer({
   };
 
   const handlePlayNext = useCallback(() => {
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setShowNextEpisodeOverlay(false);
     onNextEpisode?.();
   }, [onNextEpisode]);
 
   const handleCancelAutoplay = () => {
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setShowNextEpisodeOverlay(false);
     setShowControls(true)
     if (videoRef.current) {
@@ -433,14 +450,16 @@ export default function VideoPlayer({
     if (!v) return
     v.currentTime = Math.min(Math.max(0, v.currentTime + amount), duration || v.duration || 0)
     setShowSeekHint({ dir: amount > 0 ? "fwd" : "back", by: Math.abs(amount) })
+    resetControlsTimeout(); // Show controls on seek
     setTimeout(() => setShowSeekHint(null), 700)
-  }, [duration])
+  }, [duration, resetControlsTimeout])
 
   const handleSeekSlider = (value: number[]) => {
     const v = videoRef.current
     if (!v) return
     v.currentTime = value[0]
     setCurrentTime(value[0])
+    resetControlsTimeout(); // Show controls when user interacts with slider
   }
 
   const toggleMute = useCallback(() => {
@@ -453,7 +472,8 @@ export default function VideoPlayer({
       v.volume = 0.5
       setVolume(0.5)
     }
-  }, []) // REMOVIDO: dependência de 'volume'
+    resetControlsTimeout(); // Show controls on mute toggle
+  }, [resetControlsTimeout]) // REMOVIDO: dependência de 'volume'
 
   const handleVolumeChange = (value: number[]) => {
     const v = videoRef.current
@@ -463,10 +483,15 @@ export default function VideoPlayer({
     setVolume(newVolume)
     setIsMuted(newVolume === 0)
     try { localStorage.setItem(volumeKey, String(newVolume)) } catch { }
+    // Don't reset timeout here, keep slider visible while dragging
+    // resetControlsTimeout();
   }
 
   // ADICIONADO: Funções de mouse enter/leave da barra de volume
   const handleVolumeMouseEnter = () => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current); // Keep controls visible
+    }
     if (volumeTimeoutRef.current) {
       clearTimeout(volumeTimeoutRef.current);
     }
@@ -476,6 +501,7 @@ export default function VideoPlayer({
   const handleVolumeMouseLeave = () => {
     volumeTimeoutRef.current = setTimeout(() => {
       setIsVolumeOpen(false);
+      resetControlsTimeout(); // Reset controls timeout when mouse leaves volume area
     }, 200); // 200ms delay to allow moving to the slider
   };
 
@@ -524,7 +550,8 @@ export default function VideoPlayer({
     } catch (err) {
       console.error("Erro ao gerenciar fullscreen:", err);
     }
-  }, [adInterval, triggerAdAndPause]); // Dependências
+    resetControlsTimeout(); // Show controls on fullscreen toggle
+  }, [adInterval, triggerAdAndPause, resetControlsTimeout]); // Dependências
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -555,6 +582,7 @@ export default function VideoPlayer({
     videoRef.current.playbackRate = rate
     setPlaybackRate(rate)
     setSettingsMenu('main');
+    resetControlsTimeout(); // Show controls after changing speed
   }
 
   const changeQuality = (source: StreamSource) => {
@@ -562,20 +590,33 @@ export default function VideoPlayer({
         setCurrentSource(source);
         // Reinicia o vídeo na nova qualidade
         if (videoRef.current && isPlaying) {
+          const currentTime = videoRef.current.currentTime; // Save current time
           videoRef.current.src = source.url;
           videoRef.current.load();
-          videoRef.current.play().catch(handleError);
+          videoRef.current.addEventListener('canplay', () => {
+            if(videoRef.current) videoRef.current.currentTime = currentTime; // Restore time
+            videoRef.current?.play().catch(handleError);
+          }, { once: true });
+        } else if (videoRef.current) {
+             const currentTime = videoRef.current.currentTime; // Save current time
+             videoRef.current.src = source.url;
+             videoRef.current.load();
+             videoRef.current.addEventListener('canplay', () => {
+                if(videoRef.current) videoRef.current.currentTime = currentTime; // Restore time
+             }, { once: true });
         }
       }
       setSettingsMenu('main');
+      resetControlsTimeout(); // Show controls after changing quality
   }
 
   const toggleAutoplay = () => {
     setIsAutoplayEnabled(prev => {
       const newState = !prev;
-      try { localStorage.setItem(autoplayKey, JSON.stringify(newState)); } catch (e) { /* no-op */ }
+      try { localStorage.setItem(autoplayKey, JSON.stringify(newState)); } catch { }
       return newState;
     });
+    resetControlsTimeout(); // Keep controls visible
   };
 
   const togglePip = useCallback(async () => {
@@ -585,7 +626,8 @@ export default function VideoPlayer({
       if (document.pictureInPictureElement) { await (document as any).exitPictureInPicture() }
       else { await (v as any).requestPictureInPicture() }
     } catch (e) { console.error("Erro no PIP", e) }
-  }, [])
+    resetControlsTimeout(); // Show controls on PIP toggle
+  }, [resetControlsTimeout])
 
   useEffect(() => {
     const v = videoRef.current
@@ -662,6 +704,7 @@ export default function VideoPlayer({
         case "arrowup": e.preventDefault(); handleVolumeChange([Math.min(1, volume + 0.1)]); break;
         case "arrowdown": e.preventDefault(); handleVolumeChange([Math.max(0, volume - 0.1)]); break;
       }
+      resetControlsTimeout(); // Reset timeout on any key interaction
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -680,6 +723,7 @@ export default function VideoPlayer({
           isSpeedingUpRef.current = false;
         }
       }
+      resetControlsTimeout(); // Reset timeout on key up as well
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -689,7 +733,7 @@ export default function VideoPlayer({
       window.removeEventListener("keyup", onKeyUp);
       if (spacebarDownTimer.current) clearTimeout(spacebarDownTimer.current);
     };
-  }, [isPlayerActive, volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying]);
+  }, [isPlayerActive, volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying, resetControlsTimeout]); // Added resetControlsTimeout
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration || !progressWrapRef.current) return;
@@ -747,10 +791,11 @@ export default function VideoPlayer({
     }
   };
 
-  const handleTouchStart = () => {
+  const handleTouchStart = (side: 'left' | 'right') => { // Capture side
     if (!isPlayerActive) return;
     holdTimeoutRef.current = setTimeout(() => {
       if (videoRef.current && isPlaying) {
+        isSpeedingUpRef.current = true; // Mark as speeding up
         originalRateRef.current = videoRef.current.playbackRate
         videoRef.current.playbackRate = 2
         setShowSpeedHint(true)
@@ -764,9 +809,11 @@ export default function VideoPlayer({
       clearTimeout(holdTimeoutRef.current)
       holdTimeoutRef.current = null
     }
-    if (videoRef.current && videoRef.current.playbackRate === 2) {
-      videoRef.current.playbackRate = originalRateRef.current
-      setShowSpeedHint(false)
+    // Only reset speed if it was actually speeding up
+    if (isSpeedingUpRef.current && videoRef.current) {
+        videoRef.current.playbackRate = originalRateRef.current
+        setShowSpeedHint(false)
+        isSpeedingUpRef.current = false; // Reset flag
     }
   }
 
@@ -813,7 +860,7 @@ export default function VideoPlayer({
       <div className="w-full h-full bg-black flex flex-col items-center justify-center text-center p-6 text-white">
         <AlertTriangle className="w-12 h-12 text-yellow-400 mb-4" />
         <h2 className="text-xl font-bold mb-2">Acesso Restrito</h2>
-        <p className="max-w-md text-zinc-300">Precisamos dos anúncios para continuar, sem eles nós não temos dinheiro para pagar a hospedagem da API, remova o player do sandbox, por favor!.</p>
+        <p className="max-w-md text-zinc-300">Este player parece estar em um ambiente restrito (sandbox). Por favor, tente acessá-lo diretamente ou verifique as configurações do seu navegador.</p>
       </div>
     );
   }
@@ -834,26 +881,29 @@ export default function VideoPlayer({
       <div
         ref={containerRef}
         className={cn(
-          "fixed inset-0 w-full h-full bg-black overflow-hidden group select-none video-player-container",
+          "relative w-full h-full bg-black overflow-hidden group select-none video-player-container", // Added relative for absolute positioning inside
           isPlaying && !showControls && !showNextEpisodeOverlay && isPlayerActive && "cursor-none"
         )}
-        onDoubleClick={e => e.preventDefault()}
-        style={{ transform: 'translateZ(0)' }}
+        onDoubleClick={e => e.preventDefault()} // Prevent double-click zoom
+        style={{ transform: 'translateZ(0)' }} // Promote to composite layer for smoother animations
       >
+        {/* Backdrop Image */}
         {backdropPath && (
             <Image
                 src={`https://image.tmdb.org/t/p/w1280${backdropPath}`}
                 alt={title}
                 layout="fill"
                 objectFit="cover"
-                className="absolute inset-0 opacity-40 blur-sm"
+                className="absolute inset-0 opacity-40 blur-sm z-0" // Ensure it's behind the video
                 priority
             />
         )}
+
+        {/* Video Element */}
         <video
           ref={videoRef}
           className={cn(
-            "h-full w-full object-contain transition-opacity",
+            "h-full w-full object-contain transition-opacity relative z-[1]", // Ensure video is above backdrop
             isPlayerActive ? "opacity-100" : "opacity-0"
           )}
           onLoadStart={handleLoadStart}
@@ -867,26 +917,30 @@ export default function VideoPlayer({
           onPause={() => setIsPlaying(false)}
           onEnded={handleEnded}
           preload="metadata"
-          playsInline
+          playsInline // Important for mobile playback without fullscreen
+          webkit-playsinline="true" // iOS specific attribute
         />
+        {/* Clickable Area to Toggle Play/Pause */}
         <div
-            className="absolute inset-0 z-10"
+            className="absolute inset-0 z-[5]" // Lower z-index than controls
             onClick={handlePlayerAreaClick}
         />
+         {/* Thumbnail Video (Hidden) */}
          {currentSource.thumbnailUrl && (
           <video
             ref={thumbnailVideoRef}
-            // CORREÇÃO: src removido, useEffect irá defini-lo
-            className="pointer-events-none absolute bottom-0 left-0 opacity-0"
+            className="pointer-events-none absolute bottom-0 left-0 opacity-0 h-1 w-1" // Make it very small but still in DOM
             preload="auto"
             muted
             playsInline
-            autoPlay // CORREÇÃO: Adicionado autoPlay
-            loop // CORREÇÃO: Adicionado loop
+            webkit-playsinline="true"
+            autoPlay // Needed for seeking frames
+            loop // Needed for seeking frames
             crossOrigin="anonymous"
           />
         )}
 
+        {/* Loading/Buffering Spinner */}
         {(isLoading || isBuffering) && isPlayerActive && (
           <div
             style={{ transform: 'translateZ(0)' }}
@@ -896,6 +950,7 @@ export default function VideoPlayer({
           </div>
         )}
 
+        {/* Error Overlay */}
         {error && (
           <div
             style={{ transform: 'translateZ(0)' }}
@@ -918,10 +973,12 @@ export default function VideoPlayer({
           </div>
         )}
 
+        {/* Initial Play Button Overlay */}
         <AnimatePresence>
           {!isPlayerActive && !error && <PlayerOverlay onPlay={handleInitialPlay} />}
         </AnimatePresence>
 
+        {/* Continue Watching Overlay */}
         {showContinueWatching && isPlayerActive && (
           <div
             style={{ transform: 'translateZ(0)' }}
@@ -935,6 +992,7 @@ export default function VideoPlayer({
           </div>
         )}
 
+        {/* Seek Hint Overlay */}
         {showSeekHint && isPlayerActive && (
           <div
             style={{ transform: 'translateZ(0)' }}
@@ -946,6 +1004,7 @@ export default function VideoPlayer({
           </div>
         )}
 
+        {/* Speed Hint Overlay */}
         <AnimatePresence>
           {showSpeedHint && isPlayerActive && (
             <motion.div
@@ -962,6 +1021,7 @@ export default function VideoPlayer({
           )}
         </AnimatePresence>
 
+        {/* Next Episode Overlay */}
         <AnimatePresence>
           {showNextEpisodeOverlay && isPlayerActive && (
             <motion.div
@@ -983,351 +1043,354 @@ export default function VideoPlayer({
         </AnimatePresence>
 
         {/* Mobile tap zones */}
-        <div className="absolute inset-0 z-0 flex md:hidden">
+        <div className="absolute inset-0 z-[2] flex md:hidden">
             <div
                 className="flex-1"
                 onClick={() => onMobileTap('left')}
-                onTouchStart={handleTouchStart}
+                onTouchStart={() => handleTouchStart('left')} // Pass side
                 onTouchEnd={handleTouchEnd}
-                onTouchCancel={handleTouchEnd}
+                onTouchCancel={handleTouchEnd} // Handle cancellation
             />
             <div
-                className="w-1/3"
+                className="w-1/3" // Center zone doesn't trigger speed up
                 onClick={() => onMobileTap('center')}
             />
             <div
                 className="flex-1"
                 onClick={() => onMobileTap('right')}
-                onTouchStart={handleTouchStart}
+                onTouchStart={() => handleTouchStart('right')} // Pass side
                 onTouchEnd={handleTouchEnd}
-                onTouchCancel={handleTouchEnd}
+                onTouchCancel={handleTouchEnd} // Handle cancellation
             />
         </div>
 
-        {/* Controls */}
+        {/* Controls Container */}
         <AnimatePresence>
         {isPlayerActive && (
             <motion.div
-            initial={{ opacity: 0, y: 20 }} // Slide up effect
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 20 }} // Initial state: invisible and slightly down
+            animate={{ opacity: showControls && !showNextEpisodeOverlay ? 1 : 0, y: showControls && !showNextEpisodeOverlay ? 0 : 20 }} // Animate to visible and original position, or back
+            exit={{ opacity: 0, y: 20 }} // Animate out
             transition={{ duration: 0.2 }}
             data-controls
             style={{ transform: 'translateZ(0)' }}
             className={cn(
-                "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-4 md:px-4 transition-opacity duration-300",
-                (showControls && !showNextEpisodeOverlay) ? "opacity-100 visible pointer-events-auto" : "opacity-0 invisible pointer-events-none",
-                // REMOVIDO: Gradiente da barra de controle
-                "pt-2 md:pt-4"
+                "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-4 md:px-4", // No background gradient here
+                // Hide completely when not shown
+                !(showControls && !showNextEpisodeOverlay) && "invisible pointer-events-none"
             )}
+             // Add mouse listeners to keep controls visible when hovering over them
+             onMouseEnter={() => {
+                if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+             }}
+             onMouseLeave={() => {
+                resetControlsTimeout();
+             }}
             >
-            {/* Progress Bar */}
-            <div
-                ref={progressWrapRef}
-                onMouseMove={onProgressMouseMove}
-                onMouseLeave={onProgressLeave}
-                className="group/progress relative mb-2 cursor-pointer"
-            >
-                {/* Thumbnail Preview */}
+                {/* Progress Bar Container */}
                 <div
-                    className="absolute bottom-full mb-2 -translate-x-1/2 rounded bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10"
-                    style={{
-                    left: hoverLeft,
-                    visibility: hoverTime !== null ? 'visible' : 'hidden',
-                    }}
+                    ref={progressWrapRef}
+                    onMouseMove={onProgressMouseMove}
+                    onMouseLeave={onProgressLeave}
+                    className="group/progress relative mb-1 cursor-pointer h-12" // MODIFICAÇÃO: Aumentada altura para h-12 e removido padding
+                    style={{ zIndex: 1 }} // Ensure progress bar is above the gray bar
                 >
-                    {currentSource.thumbnailUrl && thumbnailVideoRef.current && (
-                    <canvas
-                        // MANTIDO: Lógica de renderização no canvas
-                        ref={canvasRef}
-                        className="aspect-video w-36 rounded-t-md bg-black"
-                    />
-                    )}
-                    <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
-                </div>
-
-                {/* Slider - MODIFIED track/range/buffer thickness and alignment */}
-                 <div className="relative flex items-center h-2 group-hover/progress:h-2.5 transition-[height] duration-200">
-                    {/* Background Track (thicker) */}
-                    <div className="absolute top-1/2 -translate-y-1/2 h-1 group-hover/progress:h-1.5 w-full bg-white/20 rounded-full"/>
-                    
-                    {/* *** INÍCIO DA CORREÇÃO *** */}
-                    {/* Buffer Track (Corrigido para /40 opacidade) */}
-                    <div className="absolute top-1/2 -translate-y-1/2 h-1 group-hover/progress:h-1.5 bg-white/40 rounded-full" style={{ width: `${bufferPercentage}%` }} />
-                    {/* Progress Slider (Range com altura corrigida) */}
-                    <Slider
-                        value={[Math.min(currentTime, duration || 0)]}
-                        max={duration || 100}
-                        step={0.1}
-                        onValueChange={handleSeekSlider}
-                        className="absolute w-full inset-0 h-full"
-                        trackClassName="bg-transparent h-full"
-                        // CORREÇÃO: Altura do range (linha branca) aumentada para h-1 e h-1.5 no hover
-                        rangeClassName="bg-white h-1 group-hover/progress:h-1.5 absolute top-1/2 -translate-y-1/2"
-                        // CORREÇÃO: Thumb da barra de progresso (bola) agora visível
-                        thumbClassName="bg-white border-white h-2 w-2 md:h-3 md:w-3 transition-opacity block"
-                    />
-                    {/* *** FIM DA CORREÇÃO *** */}
-                </div>
-            </div>
-
-            {/* Control Buttons Bar */}
-            <div className="flex items-center justify-between">
-                {/* Left Controls - Adjusted gap */}
-                <div className="flex items-center gap-1.5 md:gap-2.5">
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                        <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
-                            {/* Play/Pause icons using images */}
-                            {isPlaying ?
-                                <img
-                                    src="https://i.ibb.co/fdgFF2VK/despause-pequeno-bot-o.png"
-                                    alt="Pause"
-                                    className={cn("object-contain", iconSize)}
-                                    draggable="false"
-                                />
-                                :
-                                <img
-                                    src="https://i.ibb.co/chY4zZLj/bot-o-de-play-central.png"
-                                    alt="Play"
-                                    className={cn("object-contain", iconSize)}
-                                    draggable="false"
-                                />
-                            }
-                        </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
-                    </Tooltip>
-
-                    {/* MODIFICADO: Controle de Volume com Slider Vertical */}
+                    {/* Thumbnail Preview */}
                     <div
-                        className="relative flex items-center"
-                        onMouseEnter={handleVolumeMouseEnter}
-                        onMouseLeave={handleVolumeMouseLeave}
+                        className="absolute bottom-10 -translate-x-1/2 bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10 overflow-hidden" // MODIFICAÇÃO: Alterado de 'bottom-full mb-2' para 'bottom-10'
+                        style={{
+                        left: hoverLeft,
+                        visibility: hoverTime !== null ? 'visible' : 'hidden',
+                        }}
                     >
-                        {/* Slider Vertical */}
-                        <AnimatePresence>
-                            {isVolumeOpen && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: 10 }}
-                                    transition={{ duration: 0.15 }}
-                                    // *** INÍCIO DA CORREÇÃO ***
-                                    // MODIFICADO: Removido w-8 para w-auto, permitindo que o Slider defina a largura
-                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 h-24 w-auto flex justify-center items-center"
-                                    // *** FIM DA CORREÇÃO ***
-                                    onMouseEnter={handleVolumeMouseEnter}
-                                    onMouseLeave={handleVolumeMouseLeave}
-                                >
-                                    <Slider
-                                        orientation="vertical"
-                                        value={[volume]}
-                                        onValueChange={handleVolumeChange}
-                                        max={1}
-                                        step={0.01}
-                                        // *** INÍCIO DA CORREÇÃO ***
-                                        // MODIFICADO: w-1.5 para w-4 (mais largo que o thumb) e adicionado flex-col
-                                        className="h-20 w-4 flex-col" // w-4 (16px) é maior que o thumb w-3 (12px)
-                                        trackClassName="bg-white/30 w-1.5 h-full" // A barra continua w-1.5 (6px)
-                                        // *** FIM DA CORREÇÃO ***
-                                        rangeClassName="bg-white w-full" // Preenchimento branco
-                                        thumbClassName="h-3 w-3 bg-white border-white" // Bolinha branca w-3 (12px)
-                                    />
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                        
-                        {/* Botão de Volume */}
-                        <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
-                             <img
-                                src="https://i.ibb.co/0VQwLNMw/botao-de-volume.png"
-                                alt="Volume"
-                                className={cn("object-contain", iconSize, (isMuted || volume === 0) && "opacity-50")}
-                                draggable="false"
-                             />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Mutar (M)</TooltipContent>
-                        </Tooltip>
-                    </div>
-
-                    {/* Time Display */}
-                    <div className="flex select-none justify-between text-xs md:text-sm text-white/90 items-center gap-1">
-                        <span>{formatTime(currentTime)}</span>
-                        <span>/</span>
-                        <span>{formatTime(duration)}</span>
-                    </div>
-                </div>
-
-                {/* Center Title (hidden on small screens) */}
-                <div className="pointer-events-none absolute left-1/2 hidden max-w-[40vw] -translate-x-1/2 truncate text-sm text-white/80 md:block">
-                    {title}
-                </div>
-
-                {/* Right Controls - Adjusted gap */}
-                <div className="flex items-center gap-1.5 md:gap-2.5">
-                    {/* Chromecast Button (Placeholder) */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
-                                <img
-                                    src="https://i.ibb.co/2Yy4Pv04/bot-o-de-chromecast.png"
-                                    alt="Cast"
-                                    className={cn("object-contain", iconSize)}
-                                    draggable="false"
-                                />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Chromecast (Indisponível)</TooltipContent>
-                    </Tooltip>
-
-                    {/* Settings Button */}
-                    <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-                        <Tooltip>
-                        <TooltipTrigger asChild>
-                            <PopoverTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
-                                <img
-                                    src="https://i.ibb.co/W4PKpLj1/botao-de-config.png"
-                                    alt="Configurações"
-                                    className={cn("object-contain", iconSize)}
-                                    draggable="false"
-                                />
-                            </Button>
-                            </PopoverTrigger>
-                        </TooltipTrigger>
-                        <TooltipContent>Configurações</TooltipContent>
-                        </Tooltip>
-                        <PopoverContent
-                        className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur ring-1 ring-white/10"
-                        side="top"
-                        align="end"
-                        container={containerRef.current}
-                        style={{ zIndex: 2147483647 }}
-                        >
-                           {/* Popover content MODIFIED */}
-                           {settingsMenu === 'main' && (
-                                <div className="flex flex-col gap-1">
-                                    {hasNextEpisode && (
-                                        <div className="flex items-center justify-between h-9 w-full px-2">
-                                            <Label htmlFor="autoplay-switch" className="text-sm font-normal flex items-center gap-2">Próximo ep. automático</Label>
-                                            <Switch
-                                            id="autoplay-switch"
-                                            checked={isAutoplayEnabled}
-                                            onCheckedChange={toggleAutoplay}
-                                            />
-                                        </div>
-                                    )}
-                                    <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('playbackRate')}>
-                                        <span className="flex items-center gap-2">Velocidade</span>
-                                        <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
-                                    </Button>
-                                    <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
-                                        <span className="flex items-center gap-2">Qualidade</span>
-                                        <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
-                                    </Button>
-                                </div>
-                            )}
-                            {settingsMenu === 'quality' && (
-                                <div>
-                                    <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
-                                        <ChevronLeft className="h-4 w-4 mr-2"/>
-                                        Qualidade
-                                    </Button>
-                                    <div className="flex flex-col gap-1">
-                                        {sources.map((source) => (
-                                        <Button
-                                            key={source.url}
-                                            variant="ghost"
-                                            className="h-9 w-full justify-start pl-8 pr-2 relative"
-                                            onClick={() => changeQuality(source)}
-                                        >
-                                            {currentSource.url === source.url && <Check className="absolute left-2 h-4 w-4"/>}
-                                            {source.name}
-                                        </Button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {settingsMenu === 'playbackRate' && (
-                                <div>
-                                    <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
-                                        <ChevronLeft className="h-4 w-4 mr-2"/>
-                                        Velocidade
-                                    </Button>
-                                    <div className="flex flex-col gap-1">
-                                        {playbackRates.map((r) => (
-                                        <Button
-                                            key={r}
-                                            variant="ghost"
-                                            className="h-9 w-full justify-start pl-8 pr-2 relative"
-                                            onClick={() => changePlaybackRate(r)}
-                                        >
-                                            {playbackRate === r && <Check className="absolute left-2 h-4 w-4"/>}
-                                            {r === 1 ? "Normal" : `${r}x`}
-                                        </Button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </PopoverContent>
-                    </Popover>
-
-                    {/* Picture in Picture Button */}
-                    {pipSupported && (
-                        <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
-                             <img
-                                src="https://i.ibb.co/Jw0ndFSc/picture-in-picture.png"
-                                alt="PiP"
-                                className={cn("object-contain", iconSize, isPipActive && "opacity-70")}
-                                draggable="false"
+                        {/* Ensure canvas exists before rendering */}
+                        {currentSource.thumbnailUrl && thumbnailVideoRef.current && (
+                            <canvas
+                                ref={canvasRef}
+                                className="block aspect-video w-52 bg-black" // MODIFICAÇÃO: Aumentado de w-36 para w-52
                             />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Picture-in-Picture (P)</TooltipContent>
-                        </Tooltip>
-                    )}
+                        )}
+                        <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
+                    </div>
 
-                     {/* Fullscreen Button */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                        <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
-                            {isFullscreen ?
-                                <img
-                                    src="https://i.ibb.co/bg2F2VFZ/sair-de-tela-cheia.png"
-                                    alt="Sair Tela Cheia"
-                                    className={cn("object-contain", iconSize)}
-                                    draggable="false"
-                                />
-                                :
-                                <img
-                                    src="https://i.ibb.co/x8wjGChh/tela-cheia-bot-o.png"
-                                    alt="Tela Cheia"
-                                    className={cn("object-contain", iconSize)}
-                                    draggable="false"
-                                />
-                            }
-                        </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Tela Cheia (F)</TooltipContent>
-                    </Tooltip>
+                    {/* Slider */}
+                    {/* MODIFICAÇÃO: Container do Slider agora é 'absolute' para se posicionar dentro do 'h-12' do pai */}
+                    <div className="absolute bottom-2 left-0 right-0 px-1 md:px-0 flex items-center h-3 group-hover/progress:h-4 transition-[height] duration-200"> {/* MODIFICAÇÃO: Aumentada altura h-3 e group-hover h-4 */}
+                        {/* Background Track */}
+                        <div className="absolute top-1/2 -translate-y-1/2 h-2 group-hover/progress:h-3 w-full bg-white/20 rounded-full"/> {/* MODIFICAÇÃO: Aumentada altura h-2 e group-hover h-3 */}
+                        {/* Buffer Track */}
+                        <div className="absolute top-1/2 -translate-y-1/2 h-2 group-hover/progress:h-3 bg-white/40 rounded-full" style={{ width: `${bufferPercentage}%` }} /> {/* MODIFICAÇÃO: Aumentada altura h-2 e group-hover h-3 */}
+                        {/* Progress Slider Component */}
+                        <Slider
+                            value={[Math.min(currentTime, duration || 0)]}
+                            max={duration || 100}
+                            step={0.1}
+                            onValueChange={handleSeekSlider}
+                            className="absolute w-full inset-0 h-full cursor-pointer" // Make slider fill the container and have pointer cursor
+                            trackClassName="bg-transparent h-full" // Track is invisible
+                            rangeClassName="bg-white h-2 group-hover/progress:h-3 absolute top-1/2 -translate-y-1/2 rounded-full" // MODIFICAÇÃO: Espessura h-2 e group-hover h-3
+                            // Thumb visibility controlled by Slider component based on value
+                            thumbClassName={cn(
+                                "bg-white border-white h-4 w-4 transition-opacity block", // MODIFICAÇÃO: Tamanho do Thumb h-4 w-4
+                                "group-hover/progress:opacity-100 opacity-0" // Show thumb only on hover
+                             )}
+                        />
+                    </div>
+                </div>
 
-                    {/* Close Button */}
-                    {onClose && (
+                {/* Solid Dark Gray Control Bar */}
+                 {/* MODIFICAÇÃO: Aumentado padding vertical py-2 e md:py-2.5 */}
+                <div className="bg-zinc-800 rounded-md md:rounded-lg px-2 py-2 md:px-3 md:py-2.5 flex items-center justify-between relative" style={{ zIndex: 0 }}>
+                    {/* Left Controls */}
+                    <div className="flex items-center gap-1.5 md:gap-2.5">
                         <Tooltip>
                             <TooltipTrigger asChild>
-                            <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10">
-                                <X className={smallIconSize} />
+                            <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                {isPlaying ?
+                                    <img
+                                        src="https://i.ibb.co/fdgFF2VK/despause-pequeno-bot-o.png"
+                                        alt="Pause"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
+                                    :
+                                    <img
+                                        src="https://i.ibb.co/chY4zZLj/bot-o-de-play-central.png"
+                                        alt="Play"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
+                                }
                             </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Fechar</TooltipContent>
+                            <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
                         </Tooltip>
-                    )}
+
+                         {/* Volume Control Group */}
+                        <div
+                            className="relative flex items-center"
+                            onMouseEnter={handleVolumeMouseEnter}
+                            onMouseLeave={handleVolumeMouseLeave}
+                        >
+                            {/* Volume Button */}
+                             <Tooltip>
+                                <TooltipTrigger asChild>
+                                <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                    <img
+                                        src="https://i.ibb.co/0VQwLNMw/botao-de-volume.png"
+                                        alt="Volume"
+                                        className={cn("object-contain", iconSize, (isMuted || volume === 0) && "opacity-50")}
+                                        draggable="false"
+                                    />
+                                </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Mutar (M)</TooltipContent>
+                             </Tooltip>
+                            {/* Vertical Volume Slider */}
+                            <AnimatePresence>
+                                {isVolumeOpen && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="absolute bottom-full left-0 right-0 mx-auto w-fit mb-3 bg-zinc-800 rounded-md p-2 shadow-lg"
+                                        onMouseEnter={handleVolumeMouseEnter} // Keep open when hovering slider area
+                                        onMouseLeave={handleVolumeMouseLeave}
+                                    >
+                                        <Slider
+                                            orientation="vertical"
+                                            value={[volume]}
+                                            onValueChange={handleVolumeChange}
+                                            max={1}
+                                            step={0.01}
+                                            className="h-20 w-4 flex-col cursor-pointer" // Adjusted width and added cursor
+                                            trackClassName="bg-white/30 w-1.5 h-full rounded-full" // Thinner track
+                                            rangeClassName="bg-white w-full rounded-full" // White fill
+                                            thumbClassName="h-3 w-3 bg-white border-white block" // Visible thumb
+                                        />
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Time Display */}
+                        <div className="flex select-none justify-between text-xs md:text-sm text-white/90 items-center gap-1 ml-1 md:ml-2">
+                            <span>{formatTime(currentTime)}</span>
+                            <span className="opacity-70">/</span>
+                            <span>{formatTime(duration)}</span>
+                        </div>
+                    </div>
+
+                    {/* Center Title (Hidden on Mobile) */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none hidden max-w-[calc(100%-240px)] truncate px-4 text-sm text-white/80 md:block">
+                        {title}
+                    </div>
+
+                    {/* Right Controls */}
+                    <div className="flex items-center gap-1.5 md:gap-2.5">
+                       {/* Chromecast (Placeholder) */}
+                       <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center" disabled>
+                                    <img
+                                        src="https://i.ibb.co/2Yy4Pv04/bot-o-de-chromecast.png"
+                                        alt="Cast"
+                                        className={cn("object-contain opacity-50", iconSize)} // Dimmed
+                                        draggable="false"
+                                    />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Chromecast (Indisponível)</TooltipContent>
+                        </Tooltip>
+
+                        {/* Settings */}
+                        <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+                            <Tooltip>
+                            <TooltipTrigger asChild>
+                                <PopoverTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                    <img
+                                        src="https://i.ibb.co/W4PKpLj1/botao-de-config.png"
+                                        alt="Configurações"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
+                                </Button>
+                                </PopoverTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>Configurações</TooltipContent>
+                            </Tooltip>
+                             <PopoverContent
+                                className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur ring-1 ring-white/10"
+                                side="top"
+                                align="end"
+                                avoidCollisions // Prevent overflow
+                                // Use containerRef for better positioning within the player
+                                container={containerRef.current}
+                                style={{ zIndex: 2147483647 }} // High z-index if needed
+                             >
+                                {/* Popover Content */}
+                                {settingsMenu === 'main' && (
+                                    <div className="flex flex-col gap-1">
+                                        {hasNextEpisode && (
+                                            <div className="flex items-center justify-between h-9 w-full px-2">
+                                                <Label htmlFor="autoplay-switch" className="text-sm font-normal flex items-center gap-2">Próximo ep. automático</Label>
+                                                <Switch
+                                                id="autoplay-switch"
+                                                checked={isAutoplayEnabled}
+                                                onCheckedChange={toggleAutoplay}
+                                                />
+                                            </div>
+                                        )}
+                                        <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('playbackRate')}>
+                                            <span className="flex items-center gap-2">Velocidade</span>
+                                            <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
+                                        </Button>
+                                         {/* MODIFICAÇÃO: Removida a condição sources.length > 1 */}
+                                         <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
+                                             <span className="flex items-center gap-2">Qualidade</span>
+                                             <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
+                                         </Button>
+                                    </div>
+                                )}
+                                {settingsMenu === 'quality' && (
+                                    <div>
+                                        <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                            <ChevronLeft className="h-4 w-4 mr-2"/>
+                                            Qualidade
+                                        </Button>
+                                        <div className="flex flex-col gap-1">
+                                            {sources.map((source) => (
+                                            <Button
+                                                key={source.url}
+                                                variant="ghost"
+                                                className="h-9 w-full justify-start pl-8 pr-2 relative"
+                                                onClick={() => changeQuality(source)}
+                                            >
+                                                {currentSource.url === source.url && <Check className="absolute left-2 h-4 w-4"/>}
+                                                {source.name}
+                                            </Button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {settingsMenu === 'playbackRate' && (
+                                    <div>
+                                        <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                            <ChevronLeft className="h-4 w-4 mr-2"/>
+                                            Velocidade
+                                        </Button>
+                                        <div className="flex flex-col gap-1">
+                                            {playbackRates.map((r) => (
+                                            <Button
+                                                key={r}
+                                                variant="ghost"
+                                                className="h-9 w-full justify-start pl-8 pr-2 relative"
+                                                onClick={() => changePlaybackRate(r)}
+                                            >
+                                                {playbackRate === r && <Check className="absolute left-2 h-4 w-4"/>}
+                                                {r === 1 ? "Normal" : `${r}x`}
+                                            </Button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </PopoverContent>
+                        </Popover>
+
+                        {/* PiP */}
+                        {pipSupported && (
+                            <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                <img
+                                    src="https://i.ibb.co/Jw0ndFSc/picture-in-picture.png"
+                                    alt="PiP"
+                                    className={cn("object-contain", iconSize, isPipActive && "opacity-70")}
+                                    draggable="false"
+                                />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Picture-in-Picture (P)</TooltipContent>
+                            </Tooltip>
+                        )}
+
+                        {/* Fullscreen */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                            <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                {isFullscreen ?
+                                    <img
+                                        src="https://i.ibb.co/bg2F2VFZ/sair-de-tela-cheia.png"
+                                        alt="Sair Tela Cheia"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
+                                    :
+                                    <img
+                                        src="https://i.ibb.co/x8wjGChh/tela-cheia-bot-o.png"
+                                        alt="Tela Cheia"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
+                                }
+                            </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Tela Cheia (F)</TooltipContent>
+                        </Tooltip>
+
+                         {/* Close Button (Optional) */}
+                         {onClose && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10">
+                                    <X className={smallIconSize} />
+                                </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Fechar</TooltipContent>
+                            </Tooltip>
+                        )}
                     </div>
                 </div>
             </motion.div>
