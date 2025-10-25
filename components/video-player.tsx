@@ -33,14 +33,19 @@ type VideoPlayerProps = {
 }
 
 // Componente de Overlay inicial MODIFIED
-const PlayerOverlay = ({ onPlay }: { onPlay: () => void }) => {
+const PlayerOverlay = ({ onPlay, title, backdropPath }: { onPlay: () => void; title: string; backdropPath: string | null }) => {
   const [isHovering, setIsHovering] = useState(false);
+  const imageUrl = backdropPath ? `https://image.tmdb.org/t/p/w780${backdropPath}` : null; // Use a smaller backdrop
 
   return (
     <div
       className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 cursor-pointer"
       onClick={onPlay}
     >
+      {/* Optional: Show backdrop behind play button */}
+      {imageUrl && (
+         <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30 blur-sm z-[-1]" draggable="false" />
+      )}
       <img
         src={isHovering ? "https://i.ibb.co/b5GFzpMs/bot-o-de-play-central-aceso.png" : "https://i.ibb.co/8qbZwTV/bot-o-de-play-central.png"}
         alt="Assistir"
@@ -186,13 +191,22 @@ export default function VideoPlayer({
   }, [adUrl]);
 
   const handleInitialPlay = () => {
+    // Activate player UI immediately
+    setIsPlayerActive(true);
+
+    // Attempt to trigger the ad
     const adWasSuccessful = triggerAd();
-    if (adWasSuccessful) {
-        setIsPlayerActive(true);
-    } else {
+
+    // If ad fails AND we detect sandboxing (e.g., window.open failed), show the sandbox message.
+    // Otherwise, the player is active and will try to load the video.
+    if (!adWasSuccessful && (typeof window.open === 'undefined' || !window.open)) { // Basic sandbox check
         setIsSandboxed(true);
+        setIsPlayerActive(false); // Deactivate player if sandboxed
         setChecking(false);
+        return; // Stop further execution if sandboxed
     }
+    // Note: If ad was successful OR failed without sandboxing, isPlayerActive remains true
+    // and the useEffect below will handle video loading and playback.
   };
 
   const handlePlayerAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -210,20 +224,28 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video || !currentSource?.url || !isPlayerActive) return;
 
-    const savedTime = video.currentTime > 1 ? video.currentTime : 0;
+    // Keep track of time only if switching source *while* player was already active
+    const savedTime = video.currentTime > 1 && video.src !== currentSource.url ? video.currentTime : 0;
 
+    console.log(`[Player Effect] Active. Setting src: ${currentSource.url}. Saved time: ${savedTime}`); // Add log
     video.src = currentSource.url;
+    video.load(); // Explicitly load the new source
 
-    const handleCanPlay = () => {
-      if (video.currentTime < savedTime) {
+    const handleCanPlayThrough = () => {
+      console.log("[Player Effect] Video can play through."); // Add log
+      // Restore time if needed
+      if (savedTime > 0 && video.currentTime < savedTime) {
+        console.log(`[Player Effect] Restoring time to ${savedTime}`);
         video.currentTime = savedTime;
       }
+      // Attempt to play if the state indicates it should be playing
+      // Note: Auto-play might be blocked initially by the browser, user interaction (like the initial click) is usually required.
+      // This play() call here handles cases like switching sources after the initial interaction.
       video.play().catch(handleError);
     };
+    // Use canplaythrough for better readiness indication, only once per source load
+    video.addEventListener('canplaythrough', handleCanPlayThrough, { once: true });
 
-    video.addEventListener('canplay', handleCanPlay);
-
-    setEndingTriggered(false);
     setShowNextEpisodeOverlay(false);
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
@@ -241,7 +263,7 @@ export default function VideoPlayer({
 
 
     return () => {
-      video.removeEventListener('canplay', handleCanPlay);
+      // No need to remove 'once' listener
       if(video) {
         video.removeAttribute('src');
         video.load();
@@ -254,9 +276,10 @@ export default function VideoPlayer({
         thumbnailVideo.load();
       }
     };
+  // Keep dependencies minimal: Only run when source changes or player becomes active initially.
   }, [currentSource, isPlayerActive]);
 
-  // ... (restante dos useEffects de persistência, controles, etc. permanecem iguais) ...
+
   useEffect(() => {
     try {
       const savedVolume = localStorage.getItem(volumeKey)
@@ -345,8 +368,6 @@ export default function VideoPlayer({
     }
   }, [isSettingsOpen]);
 
-  // CORREÇÃO: Lógica do Próximo Episódio movida para handleEnded
-  // const triggerNextEpisodeOverlay = useCallback(() => { ... }, []); // Removido
 
   const handleLoadStart = () => {
     if (!isPlayerActive) return;
@@ -377,9 +398,6 @@ export default function VideoPlayer({
     const { currentTime, duration } = videoRef.current;
     setCurrentTime(currentTime);
     // CORREÇÃO: Removida a lógica de trigger do próximo episódio baseada no tempo
-    // if (duration > 0 && duration - currentTime < 10 && !endingTriggered) {
-    //   triggerNextEpisodeOverlay();
-    // }
     try {
       const buf = videoRef.current.buffered;
       if (buf && buf.length > 0) { setBufferedEnd(buf.end(buf.length - 1)); }
@@ -404,7 +422,6 @@ export default function VideoPlayer({
 
   const handlePlayNext = useCallback(() => {
     // CORREÇÃO: Não precisa mais limpar intervalo
-    // if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setShowNextEpisodeOverlay(false); // Esconde o overlay (embora mal apareça)
     onNextEpisode?.(); // Chama a função para carregar o próximo
   }, [onNextEpisode]);
@@ -412,13 +429,8 @@ export default function VideoPlayer({
   // CORREÇÃO: Função de cancelar não é mais necessária da mesma forma,
   // mas pode ser mantida se houver um overlay de cancelamento futuro
   const handleCancelAutoplay = () => {
-    // if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setShowNextEpisodeOverlay(false);
     setEndingTriggered(false); // Permite tentar de novo
-    // resetControlsTimeout(); // Mostra controles se cancelar
-    // if (videoRef.current) {
-    //   videoRef.current.currentTime = videoRef.current.duration; // Vai para o final
-    // }
   };
 
   const togglePlay = useCallback(() => {
@@ -479,7 +491,7 @@ export default function VideoPlayer({
       setVolume(0.5)
     }
     resetControlsTimeout(); // Show controls on mute toggle
-  }, [resetControlsTimeout]) // REMOVIDO: dependência de 'volume'
+  }, [resetControlsTimeout])
 
   const handleVolumeChange = (value: number[]) => {
     const v = videoRef.current
@@ -533,8 +545,10 @@ export default function VideoPlayer({
         if (shouldTriggerAd) {
             const adWasSuccessful = triggerAdAndPause();
             if (!adWasSuccessful) {
-                setIsSandboxed(true);
-                return;
+                // If ad fails here, it might be due to popup blocker AFTER initial interaction.
+                // We don't necessarily set sandboxed=true, maybe just log or alert.
+                console.warn("Popup ad might have been blocked on fullscreen attempt.");
+                // Optionally show a non-blocking notification to the user
             }
         }
     }
@@ -602,28 +616,33 @@ export default function VideoPlayer({
 
   const changeQuality = (source: StreamSource) => {
       if(currentSource.url !== source.url){
+        const video = videoRef.current;
+        const wasPlaying = isPlaying; // Store if it was playing before change
+        const currentTime = video ? video.currentTime : 0; // Save current time
+
+        // Update the source state FIRST
         setCurrentSource(source);
-        // Reinicia o vídeo na nova qualidade
-        if (videoRef.current && isPlaying) {
-          const currentTime = videoRef.current.currentTime; // Save current time
-          videoRef.current.src = source.url;
-          videoRef.current.load();
-          videoRef.current.addEventListener('canplay', () => {
-            if(videoRef.current) videoRef.current.currentTime = currentTime; // Restore time
-            videoRef.current?.play().catch(handleError);
+
+        // Then, update the video element source AFTER state is set
+        if (video) {
+          video.src = source.url;
+          video.load(); // Important: Tell the browser to load the new source
+          
+          // Re-attach event listener to play after load and restore time
+          video.addEventListener('canplaythrough', () => {
+              if (video) {
+                  video.currentTime = currentTime; // Restore time
+                  if (wasPlaying) {
+                      video.play().catch(handleError); // Play only if it was playing before
+                  }
+              }
           }, { once: true });
-        } else if (videoRef.current) {
-             const currentTime = videoRef.current.currentTime; // Save current time
-             videoRef.current.src = source.url;
-             videoRef.current.load();
-             videoRef.current.addEventListener('canplay', () => {
-                if(videoRef.current) videoRef.current.currentTime = currentTime; // Restore time
-             }, { once: true });
         }
       }
       setSettingsMenu('main');
       resetControlsTimeout(); // Show controls after changing quality
   }
+
 
   const toggleAutoplay = () => {
     setIsAutoplayEnabled(prev => {
@@ -907,12 +926,14 @@ export default function VideoPlayer({
             <Image
                 src={`https://image.tmdb.org/t/p/w1280${backdropPath}`}
                 alt={title}
-                layout="fill"
-                objectFit="cover"
+                fill // Use fill instead of layout="fill"
+                sizes="100vw" // Indicate it spans the viewport width
+                style={{ objectFit: 'cover' }} // Use style object for objectFit
                 className="absolute inset-0 opacity-40 blur-sm z-0" // Ensure it's behind the video
                 priority
             />
         )}
+
 
         {/* Video Element */}
         <video
@@ -990,7 +1011,7 @@ export default function VideoPlayer({
 
         {/* Initial Play Button Overlay */}
         <AnimatePresence>
-          {!isPlayerActive && !error && <PlayerOverlay onPlay={handleInitialPlay} />}
+          {!isPlayerActive && !error && <PlayerOverlay onPlay={handleInitialPlay} title={title} backdropPath={backdropPath} />}
         </AnimatePresence>
 
         {/* Continue Watching Overlay */}
@@ -1302,7 +1323,7 @@ export default function VideoPlayer({
                                         <div className="flex flex-col gap-1">
                                             {sources.map((source) => (
                                             <Button
-                                                key={source.url}
+                                                key={source.url} // Use URL as key, names might not be unique
                                                 variant="ghost"
                                                 className="h-9 w-full justify-start pl-8 pr-2 relative"
                                                 onClick={() => changeQuality(source)}
