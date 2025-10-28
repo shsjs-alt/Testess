@@ -2,7 +2,8 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { Play, Pause, RotateCcw, X, ChevronLeft, ChevronRight, Check, AlertTriangle, Volume2, VolumeX, Settings, Maximize, Minimize, PictureInPicture } from 'lucide-react'
+// MODIFIED: Removed 'Radio' icon as it's no longer needed
+import { Play, Pause, RotateCcw, X, ChevronLeft, ChevronRight, Check, AlertTriangle, Volume2, VolumeX, Settings, Maximize, Minimize, PictureInPicture } from 'lucide-react' // Import icons
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -22,6 +23,7 @@ type StreamSource = {
 type VideoPlayerProps = {
   sources: StreamSource[]
   title: string
+  // downloadUrl?: string // REMOVIDO
   onClose?: () => void
   rememberPositionKey?: string
   rememberPosition?: boolean
@@ -71,19 +73,17 @@ export default function VideoPlayer({
   const thumbnailVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null)
   const progressWrapRef = useRef<HTMLDivElement>(null)
+  // MANTIDO: Canvas ref para o thumbnail preview
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [isSandboxed, setIsSandboxed] = useState(false);
   const [adBlockerDetected, setAdBlockerDetected] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  // --- NOVO ESTADO: Contagem de cliques no play inicial ---
-  const [initialPlayClicks, setInitialPlayClicks] = useState(0);
-
-  const [isPlayerActive, setIsPlayerActive] = useState(false); // Player só fica ativo após o 2º clique
+  const [isPlayerActive, setIsPlayerActive] = useState(false);
   const [currentSource, setCurrentSource] = useState(sources[0]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [showControls, setShowControls] = useState(false) // Inicia escondido
+  const [showControls, setShowControls] = useState(true)
 
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -105,11 +105,14 @@ export default function VideoPlayer({
 
   const [isAutoplayEnabled, setIsAutoplayEnabled] = useState(true)
   const [showNextEpisodeOverlay, setShowNextEpisodeOverlay] = useState(false)
+  // CORREÇÃO: Countdown não é mais necessário aqui, será gerenciado na função
+  // const [countdown, setCountdown] = useState(5)
   const [endingTriggered, setEndingTriggered] = useState(false);
 
   const [settingsMenu, setSettingsMenu] = useState<'main' | 'quality' | 'playbackRate'>('main');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // CORREÇÃO: Controle da visibilidade do slider de volume
   const [isVolumeSliderVisible, setIsVolumeSliderVisible] = useState(false);
   const [isHoveringVolumeArea, setIsHoveringVolumeArea] = useState(false);
 
@@ -118,6 +121,7 @@ export default function VideoPlayer({
   const positionKey = `video-pos:${rememberPositionKey || sources[0].url}`
 
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  // CORREÇÃO: Timeout para esconder o slider de volume
   const volumeSliderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTapRef = useRef<{ time: number, side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -127,11 +131,10 @@ export default function VideoPlayer({
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const adUrl = "https://otieu.com/4/10070814";
-  // --- REMOVIDO: Intervalo de anúncio não é mais necessário ---
-  // const adInterval = 2 * 60 * 1000;
-  // --- REMOVIDO: Ref de último anúncio por intervalo ---
-  // const lastAdTimeRef = useRef<number | null>(null);
-  // Mantido para o fullscreen, mas pode ser removido se não houver lógica de tempo para ele
+  const adInterval = 2 * 60 * 1000; // 2 minutos
+  // MANTIDO o rastreamento do último anúncio para o Fullscreen/Exit Fullscreen
+  const lastAdTimeRef = useRef<number | null>(null);
+  // ADICIONADO: Variável para rastrear o ad do fullscreen
   const lastFullscreenAdTimeRef = useRef<number | null>(null);
 
 
@@ -164,114 +167,117 @@ export default function VideoPlayer({
     setTimeout(adBlockerCheck, 100);
   }, []);
 
-  // Função genérica para abrir anúncio
   const triggerAd = useCallback(() => {
     const adWindow = window.open(adUrl, "_blank");
+    if (!adWindow || adWindow.closed || typeof adWindow.closed === 'undefined') {
+        return false;
+    }
+    // Não pausa o vídeo aqui, pois este é o anúncio inicial. O vídeo será ativado após o clique.
+    return true;
+  }, [adUrl]);
+
+  // ADICIONADO: Nova função para anúncio após o primeiro play/fullscreen
+  const triggerAdAndPause = useCallback(() => {
+    const adWindow = window.open(adUrl, "_blank");
     const adWasSuccessful = !!adWindow && !adWindow.closed && typeof adWindow.closed === 'boolean';
-    if (!adWasSuccessful) {
-        console.warn("Popup ad might have been blocked.");
-        // Considerar mostrar uma mensagem não-bloqueante se o anúncio falhar após interação
+
+    if (adWasSuccessful) {
+        lastFullscreenAdTimeRef.current = Date.now();
+        if (videoRef.current && !videoRef.current.paused) {
+            videoRef.current.pause();
+        }
     }
     return adWasSuccessful;
   }, [adUrl]);
 
-
-  // --- MODIFICADO: Lógica do clique inicial ---
   const handleInitialPlay = () => {
-    if (checking || adBlockerDetected || isSandboxed) return; // Não faz nada se estiver checando ou bloqueado
+    // Activate player UI immediately
+    setIsPlayerActive(true);
 
-    const currentClicks = initialPlayClicks + 1;
-    setInitialPlayClicks(currentClicks);
+    // Attempt to trigger the ad
+    const adWasSuccessful = triggerAd();
 
-    // Abre o anúncio no 1º e 2º clique
-    const adSuccess = triggerAd();
-
-    if (!adSuccess && currentClicks === 1) { // Verifica sandbox apenas no primeiro clique falho
-        if (typeof window.open === 'undefined' || !window.open) {
-            setIsSandboxed(true);
-            setInitialPlayClicks(0); // Reseta para tentar de novo se sair do sandbox
-            return;
-        }
+    // If ad fails AND we detect sandboxing (e.g., window.open failed), show the sandbox message.
+    // Otherwise, the player is active and will try to load the video.
+    if (!adWasSuccessful && (typeof window.open === 'undefined' || !window.open)) { // Basic sandbox check
+        setIsSandboxed(true);
+        setIsPlayerActive(false); // Deactivate player if sandboxed
+        setChecking(false);
+        return; // Stop further execution if sandboxed
     }
-
-    // Ativa o player e começa a tocar SOMENTE no segundo clique
-    if (currentClicks === 2) {
-        setIsPlayerActive(true);
-        // O useEffect que depende de `isPlayerActive` vai carregar e tentar tocar o vídeo
-    }
+    // Note: If ad was successful OR failed without sandboxing, isPlayerActive remains true
+    // and the useEffect below will handle video loading and playback.
   };
 
-  // --- MODIFICADO: Clique na área do player ---
   const handlePlayerAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Impede o toggle se clicou no overlay inicial
-    if (!isPlayerActive) return;
-
-    // Impede o toggle se clicou nos controles
+    // Check if the click is on the play button overlay image
+    if ((e.target as HTMLElement).tagName === 'IMG' && (e.target as HTMLElement).closest('.absolute.inset-0.z-20')) {
+        return; // Don't toggle play if the initial play button is clicked
+    }
     if ((e.target as HTMLElement).closest('[data-controls]')) return;
 
-    // Apenas faz toggle do play/pause
+    // A lógica de anúncio por intervalo foi removida daqui, deixando apenas o togglePlay
     togglePlay();
   };
 
-  // --- MODIFICADO: useEffect para carregar o vídeo ---
   useEffect(() => {
     const video = videoRef.current;
-    // Só carrega se o player estiver ativo (após 2º clique)
     if (!video || !currentSource?.url || !isPlayerActive) return;
 
-    // --- Lógica de salvar/restaurar tempo ao mudar fonte ---
+    // Keep track of time only if switching source *while* player was already active
     const savedTime = video.currentTime > 1 && video.src !== currentSource.url ? video.currentTime : 0;
 
-    console.log(`[Player Effect] Active. Setting src: ${currentSource.url}. Saved time: ${savedTime}`);
+    console.log(`[Player Effect] Active. Setting src: ${currentSource.url}. Saved time: ${savedTime}`); // Add log
     video.src = currentSource.url;
-    video.load();
+    video.load(); // Explicitly load the new source
 
     const handleCanPlayThrough = () => {
-      console.log("[Player Effect] Video can play through.");
+      console.log("[Player Effect] Video can play through."); // Add log
+      // Restore time if needed
       if (savedTime > 0 && video.currentTime < savedTime) {
         console.log(`[Player Effect] Restoring time to ${savedTime}`);
         video.currentTime = savedTime;
       }
-      // --- Tenta tocar o vídeo ---
-      video.play().catch(e => {
-        // Se o autoplay falhar (comum no início), apenas atualiza o estado para pausado
-        if (e.name === 'NotAllowedError') {
-          setIsPlaying(false);
-          setShowControls(true); // Garante que controles fiquem visíveis se o play falhar
-          console.warn("Autoplay was prevented by the browser.");
-        } else {
-          handleError(); // Trata outros erros
-        }
-      });
-      // Mostra controles quando o vídeo está pronto
-      setShowControls(true);
-      resetControlsTimeout();
+      // Attempt to play if the state indicates it should be playing
+      // Note: Auto-play might be blocked initially by the browser, user interaction (like the initial click) is usually required.
+      // This play() call here handles cases like switching sources after the initial interaction.
+      video.play().catch(handleError);
     };
+    // Use canplaythrough for better readiness indication, only once per source load
     video.addEventListener('canplaythrough', handleCanPlayThrough, { once: true });
 
-    // --- Lógica para Thumbnail (mantida) ---
+    setShowNextEpisodeOverlay(false);
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
+
+    // ADICIONADO: Lógica para o thumbnail video
     const thumbnailVideo = thumbnailVideoRef.current;
     if(thumbnailVideo && currentSource.thumbnailUrl) {
         thumbnailVideo.src = currentSource.thumbnailUrl;
+        // Tenta carregar para que os metadados fiquem disponíveis
         thumbnailVideo.load();
+        // CORREÇÃO: Tenta reproduzir o vídeo de miniatura (essencial para o seek funcionar)
         thumbnailVideo.play().catch(e => console.warn("Thumbnail play failed", e));
     }
 
 
     return () => {
+      // No need to remove 'once' listener
       if(video) {
-        video.removeEventListener('canplaythrough', handleCanPlayThrough); // Limpa o listener específico
         video.removeAttribute('src');
         video.load();
       }
+      // ADICIONADO: Limpeza do thumbnail video
       if(thumbnailVideo) {
+        // CORREÇÃO: Pausa o vídeo ao limpar
         thumbnailVideo.pause();
         thumbnailVideo.removeAttribute('src');
         thumbnailVideo.load();
       }
     };
-  // Depende de isPlayerActive para iniciar
-  }, [currentSource, isPlayerActive, resetControlsTimeout]); // Adicionado resetControlsTimeout
+  // Keep dependencies minimal: Only run when source changes or player becomes active initially.
+  }, [currentSource, isPlayerActive]);
 
 
   useEffect(() => {
@@ -288,8 +294,7 @@ export default function VideoPlayer({
         setIsAutoplayEnabled(JSON.parse(savedAutoplay));
       }
 
-      // Mostra "Continuar assistindo" apenas se o player já estiver ativo
-      if (rememberPosition && isPlayerActive) {
+      if (rememberPosition) {
         const savedPos = localStorage.getItem(positionKey)
         if (savedPos) {
           const n = Number.parseFloat(savedPos)
@@ -299,9 +304,8 @@ export default function VideoPlayer({
         }
       }
     } catch (e) { /* no-op */ }
-  }, [positionKey, rememberPosition, isPlayerActive]) // Adicionado isPlayerActive
+  }, [positionKey, rememberPosition])
 
-  // Salva posição apenas se player ativo
   useEffect(() => {
     if (!rememberPosition || !isPlayerActive) return
     const id = setInterval(() => {
@@ -318,47 +322,44 @@ export default function VideoPlayer({
     setPipSupported(typeof document !== "undefined" && "pictureInPictureEnabled" in document)
   }, [])
 
-  // --- MODIFICADO: Lógica de esconder controles ---
   const hideControls = useCallback(() => {
-    // Não esconde se o menu de config estiver aberto ou mouse sobre volume
-    if (isSettingsOpen || isHoveringVolumeArea) return;
-    setShowControls(false);
-    setIsVolumeSliderVisible(false);
-  }, [isSettingsOpen, isHoveringVolumeArea]);
+    // CORREÇÃO: Só esconde se o mouse não estiver sobre a área de volume
+    if (!isHoveringVolumeArea) {
+      setShowControls(false);
+      setIsVolumeSliderVisible(false); // Garante que o slider feche com os controles
+    }
+  }, [isHoveringVolumeArea]);
 
   const resetControlsTimeout = useCallback(() => {
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
-    // Mostra controles apenas se o player estiver ativo
-    if (isPlayerActive) {
-      setShowControls(true);
-      // Define timeout apenas se estiver tocando
-      if (isPlaying) {
-          controlsTimeoutRef.current = setTimeout(hideControls, 3500);
-      }
+    setShowControls(true);
+    // CORREÇÃO: Define um novo timeout apenas se o vídeo estiver tocando
+    if (isPlaying) {
+        controlsTimeoutRef.current = setTimeout(hideControls, 3500);
     }
-  }, [hideControls, isPlaying, isPlayerActive]); // Adicionado isPlayerActive
+  }, [hideControls, isPlaying]); // Adicionado isPlaying como dependência
 
   useEffect(() => {
-    if (!isPlayerActive) return; // Não adiciona listeners se inativo
+    if (!isPlayerActive) return;
     const container = containerRef.current;
     if (container) {
       container.addEventListener("mousemove", resetControlsTimeout);
+      // CORREÇÃO: Mouseleave é gerenciado agora pelo hideControls e isHoveringVolumeArea
+      // container.addEventListener("mouseleave", hideControls);
       container.addEventListener("touchstart", resetControlsTimeout, { passive: true });
     }
-    // Inicia mostrando os controles se o player acabou de ser ativado
-    if(isPlayerActive && initialPlayClicks >= 2) {
-        resetControlsTimeout();
-    }
+    resetControlsTimeout();
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       if (container) {
         container.removeEventListener("mousemove", resetControlsTimeout);
+        // container.removeEventListener("mouseleave", hideControls);
         container.removeEventListener("touchstart", resetControlsTimeout);
       }
     };
-  }, [isPlayerActive, resetControlsTimeout, initialPlayClicks]); // Adicionado initialPlayClicks
+  }, [isPlayerActive, resetControlsTimeout]); // Removido hideControls das dependências
 
   useEffect(() => {
     if (!isSettingsOpen) {
@@ -366,6 +367,7 @@ export default function VideoPlayer({
       return () => clearTimeout(timer);
     }
   }, [isSettingsOpen]);
+
 
   const handleLoadStart = () => {
     if (!isPlayerActive) return;
@@ -376,23 +378,26 @@ export default function VideoPlayer({
     setIsLoading(false)
     setIsBuffering(false)
     const v = videoRef.current;
-    // Lógica de continuar assistindo movida para o useEffect de load
-    // if (v && showContinueWatching && rememberPosition) { ... }
+    if (v && showContinueWatching && rememberPosition) {
+        const savedPos = localStorage.getItem(positionKey)
+        const n = Number.parseFloat(savedPos || '0');
+        if (!Number.isNaN(n) && n > 5) {
+            v.currentTime = n;
+        }
+    }
   }
 
   const handleError = () => {
     setIsLoading(false)
     setIsBuffering(false)
     setError("Não foi possível carregar o vídeo.")
-    // Garante que controles fiquem visíveis no erro
-    setShowControls(true);
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
   }
 
   const handleTimeUpdate = () => {
-    if (!videoRef.current || !isPlayerActive) return; // Só atualiza se ativo
+    if (!videoRef.current) return;
     const { currentTime, duration } = videoRef.current;
     setCurrentTime(currentTime);
+    // CORREÇÃO: Removida a lógica de trigger do próximo episódio baseada no tempo
     try {
       const buf = videoRef.current.buffered;
       if (buf && buf.length > 0) { setBufferedEnd(buf.end(buf.length - 1)); }
@@ -400,42 +405,44 @@ export default function VideoPlayer({
   };
 
   const handleLoadedMetadata = () => {
-    if (!videoRef.current || !isPlayerActive) return; // Só atualiza se ativo
+    if (!videoRef.current) return
     setDuration(videoRef.current.duration || 0)
   }
 
+  // CORREÇÃO: Lógica do próximo episódio centralizada aqui
   const handleEnded = () => {
-    if(!isPlayerActive) return;
-    setIsPlaying(false);
-    setShowControls(true); // Mostra controles no fim
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    setIsPlaying(false); // Define como pausado ao terminar
     if (!endingTriggered && isAutoplayEnabled && hasNextEpisode && onNextEpisode) {
       setEndingTriggered(true);
       setShowNextEpisodeOverlay(true);
-      handlePlayNext(); // Inicia imediatamente
+      // Inicia imediatamente o próximo episódio
+      handlePlayNext();
     }
   };
 
   const handlePlayNext = useCallback(() => {
-    setShowNextEpisodeOverlay(false);
-    onNextEpisode?.();
+    // CORREÇÃO: Não precisa mais limpar intervalo
+    setShowNextEpisodeOverlay(false); // Esconde o overlay (embora mal apareça)
+    onNextEpisode?.(); // Chama a função para carregar o próximo
   }, [onNextEpisode]);
 
+  // CORREÇÃO: Função de cancelar não é mais necessária da mesma forma,
+  // mas pode ser mantida se houver um overlay de cancelamento futuro
   const handleCancelAutoplay = () => {
     setShowNextEpisodeOverlay(false);
-    setEndingTriggered(false);
+    setEndingTriggered(false); // Permite tentar de novo
   };
 
   const togglePlay = useCallback(() => {
-    if(!isPlayerActive) return; // Não faz nada se inativo
     const v = videoRef.current;
     if (!v) return;
 
+    // CORREÇÃO: Se estiver no final e for dado play, reinicia
     if (v.ended) {
         v.currentTime = 0;
         v.play().catch(handleError);
-        setEndingTriggered(false);
-        setShowNextEpisodeOverlay(false);
+        setEndingTriggered(false); // Reseta o trigger do final
+        setShowNextEpisodeOverlay(false); // Esconde o overlay
         return;
     }
 
@@ -443,7 +450,7 @@ export default function VideoPlayer({
         const playPromise = v.play();
         if (playPromise !== undefined) {
             playPromise.then(() => {
-                resetControlsTimeout();
+                resetControlsTimeout(); // Esconde controles após play
             }).catch(error => {
                 if (error.name !== "AbortError") {
                     console.warn("Play interrupted or failed, ignoring:", error);
@@ -452,31 +459,28 @@ export default function VideoPlayer({
         }
     } else {
         v.pause();
-        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); // Mantém controles visíveis ao pausar
     }
-  }, [resetControlsTimeout, isPlayerActive]); // Adicionado isPlayerActive
+  }, [resetControlsTimeout]);
 
   const seek = useCallback((amount: number) => {
-    if(!isPlayerActive) return;
     const v = videoRef.current
     if (!v) return
     v.currentTime = Math.min(Math.max(0, v.currentTime + amount), duration || v.duration || 0)
     setShowSeekHint({ dir: amount > 0 ? "fwd" : "back", by: Math.abs(amount) })
-    resetControlsTimeout();
+    resetControlsTimeout(); // Show controls on seek
     setTimeout(() => setShowSeekHint(null), 700)
-  }, [duration, resetControlsTimeout, isPlayerActive]) // Adicionado isPlayerActive
+  }, [duration, resetControlsTimeout])
 
   const handleSeekSlider = (value: number[]) => {
-    if(!isPlayerActive) return;
     const v = videoRef.current
     if (!v) return
     v.currentTime = value[0]
     setCurrentTime(value[0])
-    resetControlsTimeout();
+    resetControlsTimeout(); // Show controls when user interacts with slider
   }
 
   const toggleMute = useCallback(() => {
-    if(!isPlayerActive) return;
     const v = videoRef.current
     if (!v) return
     const newMuted = !v.muted
@@ -486,11 +490,10 @@ export default function VideoPlayer({
       v.volume = 0.5
       setVolume(0.5)
     }
-    resetControlsTimeout();
-  }, [resetControlsTimeout, isPlayerActive]) // Adicionado isPlayerActive
+    resetControlsTimeout(); // Show controls on mute toggle
+  }, [resetControlsTimeout])
 
   const handleVolumeChange = (value: number[]) => {
-    if(!isPlayerActive) return;
     const v = videoRef.current
     if (!v) return
     const newVolume = value[0]
@@ -498,171 +501,167 @@ export default function VideoPlayer({
     setVolume(newVolume)
     setIsMuted(newVolume === 0)
     try { localStorage.setItem(volumeKey, String(newVolume)) } catch { }
+    // CORREÇÃO: Não reseta o timeout geral, mas cancela o timeout de esconder o slider
     if (volumeSliderTimeoutRef.current) clearTimeout(volumeSliderTimeoutRef.current);
-    // Não reseta timeout geral dos controles aqui
+    // Don't reset general controls timeout
+    // resetControlsTimeout();
   }
 
+  // CORREÇÃO: Lógica de hover da área de volume
   const handleVolumeAreaMouseEnter = () => {
-    if(!isPlayerActive) return;
     setIsHoveringVolumeArea(true);
     if (volumeSliderTimeoutRef.current) {
         clearTimeout(volumeSliderTimeoutRef.current);
     }
     setIsVolumeSliderVisible(true);
+    // Cancela o timeout de esconder controles gerais
     if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
-        controlsTimeoutRef.current = null;
+        controlsTimeoutRef.current = null; // Indica que foi cancelado
     }
   };
 
   const handleVolumeAreaMouseLeave = () => {
-    if(!isPlayerActive) return;
     setIsHoveringVolumeArea(false);
+    // Agenda o fechamento do slider de volume
     volumeSliderTimeoutRef.current = setTimeout(() => {
         setIsVolumeSliderVisible(false);
-    }, 200);
+    }, 200); // Delay para permitir mover para o slider
+    // Reinicia o timeout para esconder os controles gerais
     resetControlsTimeout();
   };
 
-  // --- MODIFICADO: Lógica do Fullscreen ---
+
   const toggleFullscreen = useCallback(async () => {
-    if(!isPlayerActive) return; // Não faz nada se inativo
     const video = videoRef.current;
     if (!video) return;
-    const container = containerRef.current;
-    if (!container) return;
 
     const isCurrentlyFullscreen = !!document.fullscreenElement;
 
     if (!isCurrentlyFullscreen) {
-        // Abre anúncio ao ENTRAR em fullscreen
-        triggerAd(); // Usa a função genérica triggerAd
-        lastFullscreenAdTimeRef.current = Date.now(); // Marca a hora do anúncio de fullscreen
+        // Lógica: Ao entrar em fullscreen, abre o anúncio.
+        const shouldTriggerAd = !lastFullscreenAdTimeRef.current || (Date.now() - lastFullscreenAdTimeRef.current) > adInterval;
+
+        if (shouldTriggerAd) {
+            const adWasSuccessful = triggerAdAndPause();
+            if (!adWasSuccessful) {
+                // If ad fails here, it might be due to popup blocker AFTER initial interaction.
+                // We don't necessarily set sandboxed=true, maybe just log or alert.
+                console.warn("Popup ad might have been blocked on fullscreen attempt.");
+                // Optionally show a non-blocking notification to the user
+            }
+        }
     }
 
-    // Ação de Fullscreen
+    // Ação de Fullscreen nativa do navegador
+    const container = containerRef.current;
+    if (!container) return;
+
     try {
       if (!isCurrentlyFullscreen) {
+        // Entrar em Fullscreen
         if (video.webkitEnterFullscreen) {
-            video.webkitEnterFullscreen(); // Tenta método específico do iOS/Safari
-        } else if (container.requestFullscreen) {
-            await container.requestFullscreen();
+            video.webkitEnterFullscreen();
         } else {
-             console.warn("Fullscreen API not fully supported.");
+            await container.requestFullscreen();
         }
         try {
           if (screen.orientation && typeof screen.orientation.lock === 'function') {
             await screen.orientation.lock('landscape');
           }
-        } catch (e) { console.warn("Falha ao travar a orientação:", e); }
-      } else {
-        if (document.exitFullscreen) {
-            await document.exitFullscreen();
+        } catch (e) {
+          console.warn("Falha ao travar a orientação de tela:", e);
         }
+      } else {
+        // Sair do Fullscreen
+        await document.exitFullscreen();
       }
-    } catch (err) { console.error("Erro ao gerenciar fullscreen:", err); }
-    resetControlsTimeout();
-  }, [triggerAd, resetControlsTimeout, isPlayerActive]); // Adicionado isPlayerActive
+    } catch (err) {
+      console.error("Erro ao gerenciar fullscreen:", err);
+    }
+    resetControlsTimeout(); // Show controls on fullscreen toggle
+  }, [adInterval, triggerAdAndPause, resetControlsTimeout]); // Dependências
 
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
 
-      // Lógica ao SAIR do fullscreen (se necessário no futuro)
+      // Lógica: Ao sair do fullscreen, ativa o temporizador de anúncio se o vídeo estiver ativo
+      if (!isCurrentlyFullscreen && isPlayerActive) {
+        lastFullscreenAdTimeRef.current = Date.now();
+      }
 
       if (!isCurrentlyFullscreen) {
         try {
           if (screen.orientation && typeof screen.orientation.unlock === 'function') {
             screen.orientation.unlock();
           }
-        } catch (e) { console.warn("Falha ao destravar a orientação:", e); }
+        } catch (e) {
+          console.warn("Falha ao destravar a orientação de tela:", e);
+        }
       }
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    // Adiciona listener para webkit (iOS)
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-    return () => {
-        document.removeEventListener("fullscreenchange", handleFullscreenChange);
-        document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
-    };
-  }, []); // Dependência removida, pois a lógica de tempo foi removida
-
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [isPlayerActive]); // Dependência
 
   const changePlaybackRate = (rate: number) => {
-    if (!videoRef.current || !isPlayerActive) return; // Só altera se ativo
+    if (!videoRef.current) return
     videoRef.current.playbackRate = rate
     setPlaybackRate(rate)
     setSettingsMenu('main');
-    resetControlsTimeout();
+    resetControlsTimeout(); // Show controls after changing speed
   }
 
   const changeQuality = (source: StreamSource) => {
-      if(!isPlayerActive || currentSource.url === source.url) return; // Só altera se ativo e diferente
+      if(currentSource.url !== source.url){
+        const video = videoRef.current;
+        const wasPlaying = isPlaying; // Store if it was playing before change
+        const currentTime = video ? video.currentTime : 0; // Save current time
 
-      const video = videoRef.current;
-      const wasPlaying = isPlaying;
-      const currentTime = video ? video.currentTime : 0;
+        // Update the source state FIRST
+        setCurrentSource(source);
 
-      setCurrentSource(source); // Atualiza estado
-
-      // Atualiza vídeo DEPOIS do estado
-      if (video) {
-        // Pausa antes de trocar a fonte para evitar erros em alguns navegadores
-        video.pause();
-        // Limpa a fonte antiga
-        video.removeAttribute('src');
-        video.load(); // Força a limpeza
-
-        // Define a nova fonte APÓS limpar
-        video.src = source.url;
-        video.load();
-
-        const restorePlayback = () => {
-            if (video) {
-                video.currentTime = currentTime;
-                if (wasPlaying) {
-                    video.play().catch(handleError);
-                }
-                // Garante que o estado de isPlaying seja atualizado corretamente
-                setIsPlaying(wasPlaying);
-            }
-        };
-        // Usa 'loadedmetadata' ou 'canplay' como fallback se 'canplaythrough' demorar muito
-        const onReady = () => {
-            restorePlayback();
-            video.removeEventListener('canplay', onReady);
-            video.removeEventListener('loadedmetadata', onReady);
+        // Then, update the video element source AFTER state is set
+        if (video) {
+          video.src = source.url;
+          video.load(); // Important: Tell the browser to load the new source
+          
+          // Re-attach event listener to play after load and restore time
+          video.addEventListener('canplaythrough', () => {
+              if (video) {
+                  video.currentTime = currentTime; // Restore time
+                  if (wasPlaying) {
+                      video.play().catch(handleError); // Play only if it was playing before
+                  }
+              }
+          }, { once: true });
         }
-        video.addEventListener('canplay', onReady, { once: true });
-        video.addEventListener('loadedmetadata', onReady, { once: true }); // Fallback
       }
-
       setSettingsMenu('main');
-      resetControlsTimeout();
+      resetControlsTimeout(); // Show controls after changing quality
   }
 
 
   const toggleAutoplay = () => {
-    if(!isPlayerActive) return;
     setIsAutoplayEnabled(prev => {
       const newState = !prev;
       try { localStorage.setItem(autoplayKey, JSON.stringify(newState)); } catch { }
       return newState;
     });
-    resetControlsTimeout();
+    resetControlsTimeout(); // Keep controls visible
   };
 
   const togglePip = useCallback(async () => {
-    if(!isPlayerActive) return;
     const v = videoRef.current
     if (!v || !document.pictureInPictureEnabled) return
     try {
       if (document.pictureInPictureElement) { await (document as any).exitPictureInPicture() }
       else { await (v as any).requestPictureInPicture() }
     } catch (e) { console.error("Erro no PIP", e) }
-    resetControlsTimeout();
-  }, [resetControlsTimeout, isPlayerActive]) // Adicionado isPlayerActive
+    resetControlsTimeout(); // Show controls on PIP toggle
+  }, [resetControlsTimeout])
 
   useEffect(() => {
     const v = videoRef.current
@@ -705,10 +704,6 @@ export default function VideoPlayer({
               console.warn("Retry play failed", e)
               handleError();
             });
-            // Tenta dar play e mostrar controles após retry
-            setIsPlaying(true);
-            setShowControls(true);
-            resetControlsTimeout();
         }, 100);
     }
   }
@@ -719,7 +714,6 @@ export default function VideoPlayer({
       const activeElement = document.activeElement;
       if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.getAttribute("role") === "slider")) return;
 
-      // Impede que a barra de espaço cause scroll
       if (e.key === ' ' && !e.repeat) {
         e.preventDefault();
         if (isSpeedingUpRef.current) return;
@@ -732,21 +726,19 @@ export default function VideoPlayer({
             setShowSpeedHint(true);
           }
         }, 200);
-      } else if (e.key === ' ') {
-        e.preventDefault(); // Impede scroll mesmo se repetindo
       }
 
       switch (e.key.toLowerCase()) {
         case "k": e.preventDefault(); togglePlay(); break;
-        case "f": e.preventDefault(); toggleFullscreen(); break; // Prevent default 'f' behavior
-        case "m": e.preventDefault(); toggleMute(); break;
-        case "p": e.preventDefault(); togglePip(); break;
-        case "arrowright": e.preventDefault(); seek(10); break;
-        case "arrowleft": e.preventDefault(); seek(-10); break;
+        case "f": toggleFullscreen(); break;
+        case "m": toggleMute(); break;
+        case "p": togglePip(); break;
+        case "arrowright": seek(10); break;
+        case "arrowleft": seek(-10); break;
         case "arrowup": e.preventDefault(); handleVolumeChange([Math.min(1, volume + 0.1)]); break;
         case "arrowdown": e.preventDefault(); handleVolumeChange([Math.max(0, volume - 0.1)]); break;
       }
-      resetControlsTimeout();
+      resetControlsTimeout(); // Reset timeout on any key interaction
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -765,7 +757,7 @@ export default function VideoPlayer({
           isSpeedingUpRef.current = false;
         }
       }
-      resetControlsTimeout();
+      resetControlsTimeout(); // Reset timeout on key up as well
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -775,25 +767,30 @@ export default function VideoPlayer({
       window.removeEventListener("keyup", onKeyUp);
       if (spacebarDownTimer.current) clearTimeout(spacebarDownTimer.current);
     };
-  }, [isPlayerActive, volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying, resetControlsTimeout]);
+  }, [isPlayerActive, volume, togglePlay, toggleFullscreen, toggleMute, togglePip, seek, isPlaying, resetControlsTimeout]); // Added resetControlsTimeout
 
   const onProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!duration || !progressWrapRef.current || !isPlayerActive) return; // Só mostra se ativo
+    if (!duration || !progressWrapRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const time = duration * pct;
     setHoverTime(time);
 
+    // CORREÇÃO: Lógica de atualização e renderização do thumbnail preview.
     const video = thumbnailVideoRef.current;
     const canvas = canvasRef.current;
 
+    // CORREÇÃO: Alterado para readyState >= 3 (HAVE_FUTURE_DATA) para mais confiabilidade
     if (video && canvas && video.readyState >= 3) {
+      // Força a busca do frame no vídeo de miniatura
       video.currentTime = time;
+
+      // Usa requestAnimationFrame para garantir que o desenho seja feito após a atualização do frame
       requestAnimationFrame(() => {
         const ctx = canvas.getContext('2d');
         if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
           const aspectRatio = video.videoWidth / video.videoHeight;
-          canvas.width = 144;
+          canvas.width = 144; // Largura fixa
           canvas.height = 144 / aspectRatio;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         }
@@ -806,36 +803,33 @@ export default function VideoPlayer({
   };
 
   const onMobileTap = (side: 'left' | 'right' | 'center') => {
-    if (!isPlayerActive) return; // Só funciona se ativo
+    if (!isPlayerActive) return;
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current.time < 350 && lastTapRef.current.side === side;
 
     if (isDoubleTap) {
         if (side === 'left') seek(-10);
         else if (side === 'right') seek(10);
-        else togglePlay(); // Toggle play no double tap central
-        lastTapRef.current = { time: 0, side: 'center' }; // Reseta após double tap
+        else togglePlay();
+        lastTapRef.current = { time: 0, side: 'center' };
     } else {
-        // Single tap central mostra/esconde controles
         if(side === 'center') {
             setShowControls(s => !s);
-            if(showControls) { // Se estava mostrando e vai esconder
+            if(showControls) {
                 if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
-            } else { // Se estava escondido e vai mostrar
+            } else {
                 resetControlsTimeout();
             }
         }
-        // Registra o tap simples (para detectar double tap)
         lastTapRef.current = { time: now, side };
     }
   };
 
-
-  const handleTouchStart = (side: 'left' | 'right') => {
+  const handleTouchStart = (side: 'left' | 'right') => { // Capture side
     if (!isPlayerActive) return;
     holdTimeoutRef.current = setTimeout(() => {
       if (videoRef.current && isPlaying) {
-        isSpeedingUpRef.current = true;
+        isSpeedingUpRef.current = true; // Mark as speeding up
         originalRateRef.current = videoRef.current.playbackRate
         videoRef.current.playbackRate = 2
         setShowSpeedHint(true)
@@ -849,20 +843,18 @@ export default function VideoPlayer({
       clearTimeout(holdTimeoutRef.current)
       holdTimeoutRef.current = null
     }
+    // Only reset speed if it was actually speeding up
     if (isSpeedingUpRef.current && videoRef.current) {
         videoRef.current.playbackRate = originalRateRef.current
         setShowSpeedHint(false)
-        isSpeedingUpRef.current = false;
+        isSpeedingUpRef.current = false; // Reset flag
     }
   }
 
   const handleContinue = () => {
     setShowContinueWatching(false)
     if (videoRef.current) {
-      // Tenta tocar e mostra controles
-      videoRef.current.play().catch(handleError);
-      setShowControls(true);
-      resetControlsTimeout();
+      videoRef.current.play()
     }
   }
 
@@ -870,28 +862,24 @@ export default function VideoPlayer({
     setShowContinueWatching(false)
     if (videoRef.current) {
       videoRef.current.currentTime = 0
-      // Tenta tocar e mostra controles
-      videoRef.current.play().catch(handleError);
-      setShowControls(true);
-      resetControlsTimeout();
+      videoRef.current.play()
     }
   }
 
   const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
   const hoverLeft =
-    hoverTime !== null && duration > 0 && progressWrapRef.current && isPlayerActive // Só calcula se ativo
+    hoverTime !== null && duration > 0 && progressWrapRef.current
       ? Math.min(1, Math.max(0, hoverTime / duration)) * (progressWrapRef.current.clientWidth || 0)
       : 0
 
   const bufferPercentage = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
 
   const currentSpeedLabel = playbackRate === 1 ? "Normal" : `${playbackRate}x`;
+
+  // Define icon size classes - MODIFIED to be slightly larger
   const iconSize = "max-h-[20px] max-w-[20px] md:max-h-[22px] md:max-w-[22px]";
   const smallIconSize = "max-h-[16px] max-w-[16px] md:max-h-[18px] md:max-w-[18px]";
-
-  // Verifica se deve mostrar o overlay inicial
-  const showInitialOverlay = !isPlayerActive && !error && !checking && !adBlockerDetected && !isSandboxed;
 
   if (checking) {
     return (
@@ -900,6 +888,7 @@ export default function VideoPlayer({
       </div>
     );
   }
+
   if (isSandboxed) {
     return (
       <div className="w-full h-full bg-black flex flex-col items-center justify-center text-center p-6 text-white">
@@ -909,6 +898,7 @@ export default function VideoPlayer({
       </div>
     );
   }
+
   if (adBlockerDetected) {
     return (
        <div className="w-full h-full bg-black flex flex-col items-center justify-center text-center p-6 text-white">
@@ -919,36 +909,38 @@ export default function VideoPlayer({
     );
   }
 
+  // INÍCIO DO RETORNO PRINCIPAL
   return (
     <TooltipProvider delayDuration={150}>
       <div
         ref={containerRef}
         className={cn(
-          "relative w-full h-full bg-black overflow-hidden group select-none video-player-container",
-          // Esconde cursor apenas se ativo, tocando, controles escondidos e não no overlay do próximo ep
-          isPlayerActive && isPlaying && !showControls && !showNextEpisodeOverlay && "cursor-none"
+          "relative w-full h-full bg-black overflow-hidden group select-none video-player-container", // Added relative for absolute positioning inside
+          isPlaying && !showControls && !showNextEpisodeOverlay && isPlayerActive && "cursor-none"
         )}
-        onDoubleClick={e => e.preventDefault()}
-        style={{ transform: 'translateZ(0)' }}
+        onDoubleClick={e => e.preventDefault()} // Prevent double-click zoom
+        style={{ transform: 'translateZ(0)' }} // Promote to composite layer for smoother animations
       >
+        {/* Backdrop Image */}
         {backdropPath && (
             <Image
                 src={`https://image.tmdb.org/t/p/w1280${backdropPath}`}
                 alt={title}
-                fill
-                sizes="100vw"
-                style={{ objectFit: 'cover' }}
-                className="absolute inset-0 opacity-40 blur-sm z-0"
+                fill // Use fill instead of layout="fill"
+                sizes="100vw" // Indicate it spans the viewport width
+                style={{ objectFit: 'cover' }} // Use style object for objectFit
+                className="absolute inset-0 opacity-40 blur-sm z-0" // Ensure it's behind the video
                 priority
             />
         )}
 
+
+        {/* Video Element */}
         <video
           ref={videoRef}
           className={cn(
-            "h-full w-full object-contain transition-opacity relative z-[1]",
-            // Mostra o vídeo apenas se o player estiver ativo
-            isPlayerActive ? "opacity-100" : "opacity-0 pointer-events-none" // Adicionado pointer-events-none
+            "h-full w-full object-contain transition-opacity relative z-[1]", // Ensure video is above backdrop
+            isPlayerActive ? "opacity-100" : "opacity-0"
           )}
           onLoadStart={handleLoadStart}
           onCanPlay={handleCanPlay}
@@ -957,61 +949,77 @@ export default function VideoPlayer({
           onError={handleError}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
-          onPlay={() => { setIsPlaying(true); resetControlsTimeout(); }}
-          onPause={() => { setIsPlaying(false); if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); }}
+          onPlay={() => { setIsPlaying(true); resetControlsTimeout(); }} // CORREÇÃO: Reseta timeout ao dar play
+          onPause={() => { setIsPlaying(false); if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); }} // CORREÇÃO: Cancela timeout ao pausar
           onEnded={handleEnded}
           preload="metadata"
-          playsInline
-          webkit-playsinline="true"
+          playsInline // Important for mobile playback without fullscreen
+          webkit-playsinline="true" // iOS specific attribute
         />
-
-        {/* Área clicável SÓ aparece QUANDO player está ATIVO */}
-        {isPlayerActive && (
-            <div
-                className="absolute inset-0 z-[5]"
-                onClick={handlePlayerAreaClick}
-            />
-        )}
-
+        {/* Clickable Area to Toggle Play/Pause */}
+        <div
+            className="absolute inset-0 z-[5]" // Lower z-index than controls
+            onClick={handlePlayerAreaClick}
+        />
+         {/* Thumbnail Video (Hidden) */}
          {currentSource.thumbnailUrl && (
           <video
             ref={thumbnailVideoRef}
-            className="pointer-events-none absolute bottom-0 left-0 opacity-0 h-1 w-1"
+            className="pointer-events-none absolute bottom-0 left-0 opacity-0 h-1 w-1" // Make it very small but still in DOM
             preload="auto"
             muted
             playsInline
             webkit-playsinline="true"
-            autoPlay
-            loop
+            autoPlay // Needed for seeking frames
+            loop // Needed for seeking frames
             crossOrigin="anonymous"
           />
         )}
 
-        {/* Spinners e Overlays SÓ aparecem QUANDO player está ATIVO */}
+        {/* Loading/Buffering Spinner */}
         {(isLoading || isBuffering) && isPlayerActive && (
-          <div style={{ transform: 'translateZ(0)' }} className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+          <div
+            style={{ transform: 'translateZ(0)' }}
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+          >
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-white" />
           </div>
         )}
-        {error && isPlayerActive && (
-          <div style={{ transform: 'translateZ(0)' }} className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 p-4">
+
+        {/* Error Overlay */}
+        {error && (
+          <div
+            style={{ transform: 'translateZ(0)' }}
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 p-4"
+          >
             <div className="text-center text-white">
               <p className="mb-4 text-sm text-zinc-200">{error}</p>
               <div className="flex items-center justify-center gap-2">
-                <Button onClick={retry} variant="secondary" className="h-9"><RotateCcw className="mr-2 h-4 w-4" /> Tentar Novamente</Button>
-                {onClose && <Button onClick={onClose} variant="outline" className="h-9"> Fechar </Button>}
+                <Button onClick={retry} variant="secondary" className="h-9">
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Tentar Novamente
+                </Button>
+                {onClose && (
+                  <Button onClick={onClose} variant="outline" className="h-9">
+                    Fechar
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Overlay Inicial (Controlado por showInitialOverlay) */}
+        {/* Initial Play Button Overlay */}
         <AnimatePresence>
-          {showInitialOverlay && <PlayerOverlay onPlay={handleInitialPlay} title={title} backdropPath={backdropPath} />}
+          {!isPlayerActive && !error && <PlayerOverlay onPlay={handleInitialPlay} title={title} backdropPath={backdropPath} />}
         </AnimatePresence>
 
+        {/* Continue Watching Overlay */}
         {showContinueWatching && isPlayerActive && (
-          <div style={{ transform: 'translateZ(0)' }} className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70">
+          <div
+            style={{ transform: 'translateZ(0)' }}
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70"
+          >
             <p className="text-white text-lg mb-4">Continuar de onde parou?</p>
             <div className="flex gap-4">
               <Button onClick={handleContinue} className="bg-white text-black">Sim</Button>
@@ -1019,43 +1027,77 @@ export default function VideoPlayer({
             </div>
           </div>
         )}
+
+        {/* Seek Hint Overlay */}
         {showSeekHint && isPlayerActive && (
-          <div style={{ transform: 'translateZ(0)' }} className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div
+            style={{ transform: 'translateZ(0)' }}
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+          >
             <div className="rounded-full bg-black/60 px-3 py-1 text-sm text-white ring-1 ring-white/10">
               {showSeekHint.dir === "fwd" ? `+${showSeekHint.by}s` : `-${showSeekHint.by}s`}
             </div>
           </div>
         )}
+
+        {/* Speed Hint Overlay */}
         <AnimatePresence>
           {showSpeedHint && isPlayerActive && (
-            <motion.div style={{ transform: 'translateZ(0)' }} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-              <div className="rounded-full bg-black/60 px-4 py-2 text-lg font-bold text-white ring-1 ring-white/10"> 2x </div>
+            <motion.div
+              style={{ transform: 'translateZ(0)' }}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+            >
+              <div className="rounded-full bg-black/60 px-4 py-2 text-lg font-bold text-white ring-1 ring-white/10">
+                2x
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Next Episode Overlay (Agora apenas um indicador rápido, pois a transição é imediata) */}
         <AnimatePresence>
           {showNextEpisodeOverlay && isPlayerActive && (
-            <motion.div style={{ transform: 'translateZ(0)' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 pointer-events-none">
+            <motion.div
+              style={{ transform: 'translateZ(0)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 pointer-events-none" // Adicionado pointer-events-none
+            >
                <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Zonas de toque SÓ funcionam QUANDO player está ATIVO */}
-        {isPlayerActive && (
-            <div className="absolute inset-0 z-[2] flex md:hidden">
-                <div className="flex-1" onClick={() => onMobileTap('left')} onTouchStart={() => handleTouchStart('left')} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}/>
-                <div className="w-1/3" onClick={() => onMobileTap('center')}/>
-                <div className="flex-1" onClick={() => onMobileTap('right')} onTouchStart={() => handleTouchStart('right')} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}/>
-            </div>
-        )}
+        {/* Mobile tap zones */}
+        <div className="absolute inset-0 z-[2] flex md:hidden">
+            <div
+                className="flex-1"
+                onClick={() => onMobileTap('left')}
+                onTouchStart={() => handleTouchStart('left')} // Pass side
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd} // Handle cancellation
+            />
+            <div
+                className="w-1/3" // Center zone doesn't trigger speed up
+                onClick={() => onMobileTap('center')}
+            />
+            <div
+                className="flex-1"
+                onClick={() => onMobileTap('right')}
+                onTouchStart={() => handleTouchStart('right')} // Pass side
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd} // Handle cancellation
+            />
+        </div>
 
-
-        {/* Controles SÓ aparecem QUANDO player está ATIVO */}
+        {/* Controls Container */}
         <AnimatePresence>
         {isPlayerActive && (
             <motion.div
-            // Animação baseada em showControls E !showNextEpisodeOverlay
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: showControls && !showNextEpisodeOverlay ? 1 : 0, y: showControls && !showNextEpisodeOverlay ? 0 : 20 }}
             exit={{ opacity: 0, y: 20 }}
@@ -1064,13 +1106,17 @@ export default function VideoPlayer({
             style={{ transform: 'translateZ(0)' }}
             className={cn(
                 "absolute inset-x-0 bottom-0 z-10 px-2 pb-2 md:bottom-4 md:px-4",
-                // Esconde se showControls for false OU se showNextEpisodeOverlay for true
-                (!(showControls && !showNextEpisodeOverlay)) && "invisible pointer-events-none"
+                !(showControls && !showNextEpisodeOverlay) && "invisible pointer-events-none"
             )}
-             onMouseEnter={() => { if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); }}
-             onMouseLeave={() => { resetControlsTimeout(); }}
+             // CORREÇÃO: Mouse enter/leave nos controles agora cancelam/reiniciam o timeout
+             onMouseEnter={() => {
+                if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+             }}
+             onMouseLeave={() => {
+                resetControlsTimeout();
+             }}
             >
-                {/* Barra de Progresso */}
+                {/* Progress Bar Container */}
                 <div
                     ref={progressWrapRef}
                     onMouseMove={onProgressMouseMove}
@@ -1081,9 +1127,17 @@ export default function VideoPlayer({
                     {/* Thumbnail Preview */}
                     <div
                         className="absolute bottom-10 -translate-x-1/2 bg-black/80 backdrop-blur-sm text-white text-xs ring-1 ring-white/10 overflow-hidden"
-                        style={{ left: hoverLeft, visibility: hoverTime !== null ? 'visible' : 'hidden' }}
+                        style={{
+                        left: hoverLeft,
+                        visibility: hoverTime !== null ? 'visible' : 'hidden',
+                        }}
                     >
-                        {currentSource.thumbnailUrl && thumbnailVideoRef.current && (<canvas ref={canvasRef} className="block aspect-video w-52 bg-black"/>)}
+                        {currentSource.thumbnailUrl && thumbnailVideoRef.current && (
+                            <canvas
+                                ref={canvasRef}
+                                className="block aspect-video w-52 bg-black"
+                            />
+                        )}
                         <span className="block px-2 py-1">{formatTime(hoverTime ?? 0)}</span>
                     </div>
 
@@ -1099,112 +1153,261 @@ export default function VideoPlayer({
                             className="absolute w-full inset-0 h-full cursor-pointer"
                             trackClassName="bg-transparent h-full"
                             rangeClassName="bg-white h-2 group-hover/progress:h-3 absolute top-1/2 -translate-y-1/2 rounded-full"
-                            thumbClassName={cn("bg-white border-white h-4 w-4 transition-opacity block", "group-hover/progress:opacity-100 opacity-0")}
+                            thumbClassName={cn(
+                                "bg-white border-white h-4 w-4 transition-opacity block",
+                                "group-hover/progress:opacity-100 opacity-0"
+                             )}
                         />
                     </div>
                 </div>
 
-                {/* Barra de Controles */}
+                {/* Solid Dark Gray Control Bar */}
                 <div className="bg-zinc-800 rounded-md md:rounded-lg px-2 py-2 md:px-3 md:py-2.5 flex items-center justify-between relative" style={{ zIndex: 0 }}>
-                    {/* Controles Esquerda */}
+                    {/* Left Controls */}
                     <div className="flex items-center gap-1.5 md:gap-2.5">
                         <Tooltip>
                             <TooltipTrigger asChild>
                             <Button onClick={togglePlay} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
                                 {isPlaying ?
-                                    <img src="https://i.ibb.co/fdgFF2VK/despause-pequeno-bot-o.png" alt="Pause" className={cn("object-contain", iconSize)} draggable="false" />
+                                    <img
+                                        src="https://i.ibb.co/fdgFF2VK/despause-pequeno-bot-o.png"
+                                        alt="Pause"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
                                     :
-                                    <img src="https://i.ibb.co/chY4zZLj/bot-o-de-play-central.png" alt="Play" className={cn("object-contain", iconSize)} draggable="false" />
+                                    <img
+                                        src="https://i.ibb.co/chY4zZLj/bot-o-de-play-central.png"
+                                        alt="Play"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
                                 }
                             </Button>
                             </TooltipTrigger>
                             <TooltipContent>{isPlaying ? "Pausar (K)" : "Play (K)"}</TooltipContent>
                         </Tooltip>
 
-                         <div className="relative flex items-center" onMouseEnter={handleVolumeAreaMouseEnter} onMouseLeave={handleVolumeAreaMouseLeave}>
+                         {/* MODIFICAÇÃO: Volume Control Group - Horizontal */}
+                        <div
+                            className="relative flex items-center"
+                            onMouseEnter={handleVolumeAreaMouseEnter}
+                            onMouseLeave={handleVolumeAreaMouseLeave}
+                        >
+                            {/* Volume Button */}
                              <Tooltip>
                                 <TooltipTrigger asChild>
                                 <Button onClick={toggleMute} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
-                                    <img src="https://i.ibb.co/0VQwLNMw/botao-de-volume.png" alt="Volume" className={cn("object-contain", iconSize, (isMuted || volume === 0) && "opacity-50")} draggable="false" />
+                                    <img
+                                        src="https://i.ibb.co/0VQwLNMw/botao-de-volume.png"
+                                        alt="Volume"
+                                        className={cn("object-contain", iconSize, (isMuted || volume === 0) && "opacity-50")}
+                                        draggable="false"
+                                    />
                                 </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Mutar (M)</TooltipContent>
                              </Tooltip>
+                            {/* Horizontal Volume Slider */}
                             <AnimatePresence>
-                                {isVolumeSliderVisible && (
-                                    <motion.div initial={{ opacity: 0, x: -10, scale: 0.9 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: -10, scale: 0.9 }} transition={{ duration: 0.15 }} className="absolute left-full top-1/2 -translate-y-1/2 ml-2 bg-zinc-800 rounded-md px-3 py-2 shadow-lg">
-                                        <Slider value={[volume]} onValueChange={handleVolumeChange} max={1} step={0.01} className="w-20 h-4 flex items-center cursor-pointer" trackClassName="bg-white/30 h-1.5 w-full rounded-full" rangeClassName="bg-white h-full rounded-full" thumbClassName="h-3 w-3 bg-white border-white block"/>
+                                {isVolumeSliderVisible && ( // Usa o novo estado
+                                    <motion.div
+                                        initial={{ opacity: 0, x: -10, scale: 0.9 }} // Anima da esquerda
+                                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                                        exit={{ opacity: 0, x: -10, scale: 0.9 }}
+                                        transition={{ duration: 0.15 }}
+                                        // Posiciona à direita do botão, centralizado verticalmente
+                                        className="absolute left-full top-1/2 -translate-y-1/2 ml-2 bg-zinc-800 rounded-md px-3 py-2 shadow-lg"
+                                    >
+                                        <Slider
+                                            // orientation="horizontal" // Default
+                                            value={[volume]}
+                                            onValueChange={handleVolumeChange}
+                                            max={1}
+                                            step={0.01}
+                                            // Define largura e altura para horizontal
+                                            className="w-20 h-4 flex items-center cursor-pointer"
+                                            trackClassName="bg-white/30 h-1.5 w-full rounded-full"
+                                            rangeClassName="bg-white h-full rounded-full"
+                                            thumbClassName="h-3 w-3 bg-white border-white block"
+                                        />
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                         </div>
 
+                        {/* Time Display */}
                         <div className="flex select-none justify-between text-xs md:text-sm text-white/90 items-center gap-1 ml-1 md:ml-2">
-                            <span>{formatTime(currentTime)}</span><span className="opacity-70">/</span><span>{formatTime(duration)}</span>
+                            <span>{formatTime(currentTime)}</span>
+                            <span className="opacity-70">/</span>
+                            <span>{formatTime(duration)}</span>
                         </div>
                     </div>
 
-                    {/* Título Central (Escondido no mobile) */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none hidden max-w-[calc(100%-240px)] truncate px-4 text-sm text-white/80 md:block">{title}</div>
+                    {/* Center Title (Hidden on Mobile) */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none hidden max-w-[calc(100%-240px)] truncate px-4 text-sm text-white/80 md:block">
+                        {title}
+                    </div>
 
-                    {/* Controles Direita */}
+                    {/* Right Controls */}
                     <div className="flex items-center gap-1.5 md:gap-2.5">
+                       {/* Chromecast (Placeholder) */}
                        <Tooltip>
-                            <TooltipTrigger asChild><Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center" disabled><img src="https://i.ibb.co/2Yy4Pv04/bot-o-de-chromecast.png" alt="Cast" className={cn("object-contain opacity-50", iconSize)} draggable="false" /></Button></TooltipTrigger>
+                            <TooltipTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center" disabled>
+                                    <img
+                                        src="https://i.ibb.co/2Yy4Pv04/bot-o-de-chromecast.png"
+                                        alt="Cast"
+                                        className={cn("object-contain opacity-50", iconSize)} // Dimmed
+                                        draggable="false"
+                                    />
+                                </Button>
+                            </TooltipTrigger>
                             <TooltipContent>Chromecast (Indisponível)</TooltipContent>
                         </Tooltip>
 
+                        {/* Settings */}
                         <Popover open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
                             <Tooltip>
-                            <TooltipTrigger asChild><PopoverTrigger asChild><Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center"><img src="https://i.ibb.co/W4PKpLj1/botao-de-config.png" alt="Configurações" className={cn("object-contain", iconSize)} draggable="false" /></Button></PopoverTrigger></TooltipTrigger>
+                            <TooltipTrigger asChild>
+                                <PopoverTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                    <img
+                                        src="https://i.ibb.co/W4PKpLj1/botao-de-config.png"
+                                        alt="Configurações"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
+                                </Button>
+                                </PopoverTrigger>
+                            </TooltipTrigger>
                             <TooltipContent>Configurações</TooltipContent>
                             </Tooltip>
-                             <PopoverContent className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur ring-1 ring-white/10" side="top" align="end" avoidCollisions container={containerRef.current} style={{ zIndex: 2147483647 }}>
+                             <PopoverContent
+                                className="w-64 border-zinc-700 bg-black/80 p-1 text-white backdrop-blur ring-1 ring-white/10"
+                                side="top"
+                                align="end"
+                                avoidCollisions
+                                container={containerRef.current}
+                                style={{ zIndex: 2147483647 }}
+                             >
+                                {/* Popover Content */}
                                 {settingsMenu === 'main' && (
                                     <div className="flex flex-col gap-1">
-                                        {hasNextEpisode && (<div className="flex items-center justify-between h-9 w-full px-2"><Label htmlFor="autoplay-switch" className="text-sm font-normal flex items-center gap-2">Próximo ep. automático</Label><Switch id="autoplay-switch" checked={isAutoplayEnabled} onCheckedChange={toggleAutoplay}/></div>)}
-                                        <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('playbackRate')}><span className="flex items-center gap-2">Velocidade</span><span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span></Button>
-                                         <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}><span className="flex items-center gap-2">Qualidade</span><span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span></Button>
+                                        {hasNextEpisode && (
+                                            <div className="flex items-center justify-between h-9 w-full px-2">
+                                                <Label htmlFor="autoplay-switch" className="text-sm font-normal flex items-center gap-2">Próximo ep. automático</Label>
+                                                <Switch
+                                                id="autoplay-switch"
+                                                checked={isAutoplayEnabled}
+                                                onCheckedChange={toggleAutoplay}
+                                                />
+                                            </div>
+                                        )}
+                                        <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('playbackRate')}>
+                                            <span className="flex items-center gap-2">Velocidade</span>
+                                            <span className="flex items-center gap-1 text-white/70">{currentSpeedLabel} <ChevronRight className="h-4 w-4"/></span>
+                                        </Button>
+                                         <Button variant="ghost" className="h-9 w-full justify-between px-2" onClick={() => setSettingsMenu('quality')}>
+                                             <span className="flex items-center gap-2">Qualidade</span>
+                                             <span className="flex items-center gap-1 text-white/70">{currentSource.name} <ChevronRight className="h-4 w-4"/></span>
+                                         </Button>
                                     </div>
                                 )}
                                 {settingsMenu === 'quality' && (
                                     <div>
-                                        <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}><ChevronLeft className="h-4 w-4 mr-2"/> Qualidade </Button>
-                                        <div className="flex flex-col gap-1">{sources.map((source) => (<Button key={source.url} variant="ghost" className="h-9 w-full justify-start pl-8 pr-2 relative" onClick={() => changeQuality(source)}>{currentSource.url === source.url && <Check className="absolute left-2 h-4 w-4"/>} {source.name}</Button>))}</div>
+                                        <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                            <ChevronLeft className="h-4 w-4 mr-2"/>
+                                            Qualidade
+                                        </Button>
+                                        <div className="flex flex-col gap-1">
+                                            {sources.map((source) => (
+                                            <Button
+                                                key={source.url} // Use URL as key, names might not be unique
+                                                variant="ghost"
+                                                className="h-9 w-full justify-start pl-8 pr-2 relative"
+                                                onClick={() => changeQuality(source)}
+                                            >
+                                                {currentSource.url === source.url && <Check className="absolute left-2 h-4 w-4"/>}
+                                                {source.name}
+                                            </Button>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                                 {settingsMenu === 'playbackRate' && (
                                     <div>
-                                        <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}><ChevronLeft className="h-4 w-4 mr-2"/> Velocidade </Button>
-                                        <div className="flex flex-col gap-1">{playbackRates.map((r) => (<Button key={r} variant="ghost" className="h-9 w-full justify-start pl-8 pr-2 relative" onClick={() => changePlaybackRate(r)}>{playbackRate === r && <Check className="absolute left-2 h-4 w-4"/>} {r === 1 ? "Normal" : `${r}x`}</Button>))}</div>
+                                        <Button variant="ghost" className="h-9 w-full justify-start px-2 mb-1" onClick={() => setSettingsMenu('main')}>
+                                            <ChevronLeft className="h-4 w-4 mr-2"/>
+                                            Velocidade
+                                        </Button>
+                                        <div className="flex flex-col gap-1">
+                                            {playbackRates.map((r) => (
+                                            <Button
+                                                key={r}
+                                                variant="ghost"
+                                                className="h-9 w-full justify-start pl-8 pr-2 relative"
+                                                onClick={() => changePlaybackRate(r)}
+                                            >
+                                                {playbackRate === r && <Check className="absolute left-2 h-4 w-4"/>}
+                                                {r === 1 ? "Normal" : `${r}x`}
+                                            </Button>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                             </PopoverContent>
                         </Popover>
 
+                        {/* PiP */}
                         {pipSupported && (
                             <Tooltip>
-                            <TooltipTrigger asChild><Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center"><img src="https://i.ibb.co/Jw0ndFSc/picture-in-picture.png" alt="PiP" className={cn("object-contain", iconSize, isPipActive && "opacity-70")} draggable="false" /></Button></TooltipTrigger>
+                            <TooltipTrigger asChild>
+                                <Button onClick={togglePip} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
+                                <img
+                                    src="https://i.ibb.co/Jw0ndFSc/picture-in-picture.png"
+                                    alt="PiP"
+                                    className={cn("object-contain", iconSize, isPipActive && "opacity-70")}
+                                    draggable="false"
+                                />
+                                </Button>
+                            </TooltipTrigger>
                             <TooltipContent>Picture-in-Picture (P)</TooltipContent>
                             </Tooltip>
                         )}
 
+                        {/* Fullscreen */}
                         <Tooltip>
                             <TooltipTrigger asChild>
                             <Button onClick={toggleFullscreen} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10 flex items-center justify-center">
                                 {isFullscreen ?
-                                    <img src="https://i.ibb.co/bg2F2VFZ/sair-de-tela-cheia.png" alt="Sair Tela Cheia" className={cn("object-contain", iconSize)} draggable="false" />
+                                    <img
+                                        src="https://i.ibb.co/bg2F2VFZ/sair-de-tela-cheia.png"
+                                        alt="Sair Tela Cheia"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
                                     :
-                                    <img src="https://i.ibb.co/x8wjGChh/tela-cheia-bot-o.png" alt="Tela Cheia" className={cn("object-contain", iconSize)} draggable="false" />
+                                    <img
+                                        src="https://i.ibb.co/x8wjGChh/tela-cheia-bot-o.png"
+                                        alt="Tela Cheia"
+                                        className={cn("object-contain", iconSize)}
+                                        draggable="false"
+                                    />
                                 }
                             </Button>
                             </TooltipTrigger>
                             <TooltipContent>Tela Cheia (F)</TooltipContent>
                         </Tooltip>
 
+                         {/* Close Button (Optional) */}
                          {onClose && (
                             <Tooltip>
-                                <TooltipTrigger asChild><Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10"><X className={smallIconSize} /></Button></TooltipTrigger>
+                                <TooltipTrigger asChild>
+                                <Button onClick={onClose} size="icon" variant="ghost" className="h-9 w-9 md:h-10 md:w-10 text-white hover:bg-white/10">
+                                    <X className={smallIconSize} />
+                                </Button>
+                                </TooltipTrigger>
                                 <TooltipContent>Fechar</TooltipContent>
                             </Tooltip>
                         )}
