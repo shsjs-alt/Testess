@@ -130,12 +130,10 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const adUrl = "https://otieu.com/4/10070814";
-  const adInterval = 2 * 60 * 1000; // 2 minutos
-  // MANTIDO o rastreamento do último anúncio para o Fullscreen/Exit Fullscreen
-  const lastAdTimeRef = useRef<number | null>(null);
-  // ADICIONADO: Variável para rastrear o ad do fullscreen
-  const lastFullscreenAdTimeRef = useRef<number | null>(null);
+  const adUrl = "https://otieu.com/4/10070814"; // URL do anúncio
+  const adInterval = 1 * 60 * 1000; // MODIFICADO: Intervalo para 1 minuto
+  const lastAdTimeRef = useRef<number | null>(null); // MUDANÇA: Rastreia o tempo do último anúncio (qualquer tipo)
+  const lastFullscreenAdTimeRef = useRef<number | null>(null); // Mantido por precaução, mas usaremos lastAdTimeRef
 
 
   useEffect(() => {
@@ -167,58 +165,58 @@ export default function VideoPlayer({
     setTimeout(adBlockerCheck, 100);
   }, []);
 
-  const triggerAd = useCallback(() => {
-    const adWindow = window.open(adUrl, "_blank");
-    if (!adWindow || adWindow.closed || typeof adWindow.closed === 'undefined') {
-        return false;
-    }
-    // Não pausa o vídeo aqui, pois este é o anúncio inicial. O vídeo será ativado após o clique.
-    return true;
-  }, [adUrl]);
-
-  // ADICIONADO: Nova função para anúncio após o primeiro play/fullscreen
-  const triggerAdAndPause = useCallback(() => {
+  // Função genérica para abrir UM anúncio
+  const triggerSingleAd = useCallback((pauseVideo: boolean = false): boolean => {
     const adWindow = window.open(adUrl, "_blank");
     const adWasSuccessful = !!adWindow && !adWindow.closed && typeof adWindow.closed === 'boolean';
 
     if (adWasSuccessful) {
-        lastFullscreenAdTimeRef.current = Date.now();
-        if (videoRef.current && !videoRef.current.paused) {
+        lastAdTimeRef.current = Date.now(); // Atualiza o tempo do último anúncio
+        if (pauseVideo && videoRef.current && !videoRef.current.paused) {
             videoRef.current.pause();
         }
     }
     return adWasSuccessful;
   }, [adUrl]);
 
+  // MUDANÇA: Abre DOIS anúncios iniciais
   const handleInitialPlay = () => {
-    // Activate player UI immediately
-    setIsPlayerActive(true);
+    setIsPlayerActive(true); // Ativa a UI imediatamente
 
-    // Attempt to trigger the ad
-    const adWasSuccessful = triggerAd();
+    // Tenta abrir o primeiro anúncio
+    const ad1Success = triggerSingleAd(false); // Não pausa para o primeiro
 
-    // If ad fails AND we detect sandboxing (e.g., window.open failed), show the sandbox message.
-    // Otherwise, the player is active and will try to load the video.
-    if (!adWasSuccessful && (typeof window.open === 'undefined' || !window.open)) { // Basic sandbox check
-        setIsSandboxed(true);
-        setIsPlayerActive(false); // Deactivate player if sandboxed
-        setChecking(false);
-        return; // Stop further execution if sandboxed
+    // Tenta abrir o segundo anúncio logo em seguida
+    const ad2Success = triggerSingleAd(false); // Não pausa para o segundo
+
+    // Se AMBOS falharem E detectarmos sandbox, mostra mensagem de sandbox
+    if (!ad1Success && !ad2Success && (typeof window.open === 'undefined' || !window.open)) {
+      setIsSandboxed(true);
+      setIsPlayerActive(false);
+      setChecking(false);
+      return;
     }
-    // Note: If ad was successful OR failed without sandboxing, isPlayerActive remains true
-    // and the useEffect below will handle video loading and playback.
+    // Caso contrário, o player está ativo e tentará carregar o vídeo
   };
 
-  const handlePlayerAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Check if the click is on the play button overlay image
-    if ((e.target as HTMLElement).tagName === 'IMG' && (e.target as HTMLElement).closest('.absolute.inset-0.z-20')) {
-        return; // Don't toggle play if the initial play button is clicked
+  // MUDANÇA: Lógica de clique na área do vídeo (excluindo controles)
+  const handleVideoClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Ignora cliques nos controles ou no overlay inicial
+    if ((e.target as HTMLElement).closest('[data-controls]') || (e.target as HTMLElement).closest('.initial-overlay-class')) {
+        return;
     }
-    if ((e.target as HTMLElement).closest('[data-controls]')) return;
 
-    // A lógica de anúncio por intervalo foi removida daqui, deixando apenas o togglePlay
-    togglePlay();
+    const now = Date.now();
+    const shouldTriggerAd = !lastAdTimeRef.current || (now - lastAdTimeRef.current) > adInterval;
+
+    if (shouldTriggerAd) {
+        triggerSingleAd(true); // Tenta abrir anúncio e pausar o vídeo
+    } else {
+        // Se não for hora do anúncio, apenas alterna play/pause
+        togglePlay();
+    }
   };
+
 
   useEffect(() => {
     const video = videoRef.current;
@@ -238,10 +236,11 @@ export default function VideoPlayer({
         console.log(`[Player Effect] Restoring time to ${savedTime}`);
         video.currentTime = savedTime;
       }
-      // Attempt to play if the state indicates it should be playing
-      // Note: Auto-play might be blocked initially by the browser, user interaction (like the initial click) is usually required.
-      // This play() call here handles cases like switching sources after the initial interaction.
-      video.play().catch(handleError);
+       // Tenta tocar apenas se o estado for 'playing' APÓS o clique inicial.
+       // Não força play automático aqui.
+       if (isPlaying) {
+           video.play().catch(handleError);
+       }
     };
     // Use canplaythrough for better readiness indication, only once per source load
     video.addEventListener('canplaythrough', handleCanPlayThrough, { once: true });
@@ -276,7 +275,7 @@ export default function VideoPlayer({
         thumbnailVideo.load();
       }
     };
-  // Keep dependencies minimal: Only run when source changes or player becomes active initially.
+  // MUDANÇA: isPlaying removido das dependências para evitar reload no play/pause
   }, [currentSource, isPlayerActive]);
 
 
@@ -539,17 +538,12 @@ export default function VideoPlayer({
     const isCurrentlyFullscreen = !!document.fullscreenElement;
 
     if (!isCurrentlyFullscreen) {
-        // Lógica: Ao entrar em fullscreen, abre o anúncio.
-        const shouldTriggerAd = !lastFullscreenAdTimeRef.current || (Date.now() - lastFullscreenAdTimeRef.current) > adInterval;
+        // MUDANÇA: Verifica o intervalo antes de abrir o anúncio ao entrar em tela cheia
+        const now = Date.now();
+        const shouldTriggerAd = !lastAdTimeRef.current || (now - lastAdTimeRef.current) > adInterval;
 
         if (shouldTriggerAd) {
-            const adWasSuccessful = triggerAdAndPause();
-            if (!adWasSuccessful) {
-                // If ad fails here, it might be due to popup blocker AFTER initial interaction.
-                // We don't necessarily set sandboxed=true, maybe just log or alert.
-                console.warn("Popup ad might have been blocked on fullscreen attempt.");
-                // Optionally show a non-blocking notification to the user
-            }
+            triggerSingleAd(true); // Abre UM anúncio e pausa
         }
     }
 
@@ -580,17 +574,15 @@ export default function VideoPlayer({
       console.error("Erro ao gerenciar fullscreen:", err);
     }
     resetControlsTimeout(); // Show controls on fullscreen toggle
-  }, [adInterval, triggerAdAndPause, resetControlsTimeout]); // Dependências
+  }, [adInterval, triggerSingleAd, resetControlsTimeout]); // MUDANÇA: Usa triggerSingleAd
 
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
 
-      // Lógica: Ao sair do fullscreen, ativa o temporizador de anúncio se o vídeo estiver ativo
-      if (!isCurrentlyFullscreen && isPlayerActive) {
-        lastFullscreenAdTimeRef.current = Date.now();
-      }
+      // MUDANÇA: Não precisa mais atualizar lastFullscreenAdTimeRef ao sair
+      // A verificação será feita com lastAdTimeRef ao entrar novamente
 
       if (!isCurrentlyFullscreen) {
         try {
@@ -604,7 +596,7 @@ export default function VideoPlayer({
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [isPlayerActive]); // Dependência
+  }, []); // MUDANÇA: isPlayerActive removido, não relevante para a lógica de sair de fullscreen
 
   const changePlaybackRate = (rate: number) => {
     if (!videoRef.current) return
@@ -627,7 +619,7 @@ export default function VideoPlayer({
         if (video) {
           video.src = source.url;
           video.load(); // Important: Tell the browser to load the new source
-          
+
           // Re-attach event listener to play after load and restore time
           video.addEventListener('canplaythrough', () => {
               if (video) {
@@ -810,7 +802,15 @@ export default function VideoPlayer({
     if (isDoubleTap) {
         if (side === 'left') seek(-10);
         else if (side === 'right') seek(10);
-        else togglePlay();
+        else {
+            // MUDANÇA: Trigger de anúncio no double-tap central se o intervalo passou
+            const shouldTriggerAd = !lastAdTimeRef.current || (now - lastAdTimeRef.current) > adInterval;
+            if (shouldTriggerAd) {
+                triggerSingleAd(true);
+            } else {
+                togglePlay();
+            }
+        }
         lastTapRef.current = { time: 0, side: 'center' };
     } else {
         if(side === 'center') {
@@ -955,11 +955,8 @@ export default function VideoPlayer({
           preload="metadata"
           playsInline // Important for mobile playback without fullscreen
           webkit-playsinline="true" // iOS specific attribute
-        />
-        {/* Clickable Area to Toggle Play/Pause */}
-        <div
-            className="absolute inset-0 z-[5]" // Lower z-index than controls
-            onClick={handlePlayerAreaClick}
+          // MUDANÇA: Adiciona onClick ao próprio vídeo para trigger de anúncio/play
+          onClick={handleVideoClick}
         />
          {/* Thumbnail Video (Hidden) */}
          {currentSource.thumbnailUrl && (
@@ -1011,7 +1008,11 @@ export default function VideoPlayer({
 
         {/* Initial Play Button Overlay */}
         <AnimatePresence>
-          {!isPlayerActive && !error && <PlayerOverlay onPlay={handleInitialPlay} title={title} backdropPath={backdropPath} />}
+          {!isPlayerActive && !error && (
+            <div className="initial-overlay-class absolute inset-0 z-20"> {/* Add class */}
+                 <PlayerOverlay onPlay={handleInitialPlay} title={title} backdropPath={backdropPath} />
+            </div>
+          )}
         </AnimatePresence>
 
         {/* Continue Watching Overlay */}
