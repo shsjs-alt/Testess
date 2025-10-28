@@ -32,28 +32,29 @@ type VideoPlayerProps = {
   backdropPath?: string | null;
 }
 
-// Componente de Overlay inicial MODIFIED
-const PlayerOverlay = ({ onPlay, title, backdropPath }: { onPlay: () => void; title: string; backdropPath: string | null }) => {
+// --- MODIFICAÇÃO: Componente de Overlay inicial ---
+const PlayerOverlay = ({ onClick, title, backdropPath }: { onClick: () => void; title: string; backdropPath: string | null }) => {
   const [isHovering, setIsHovering] = useState(false);
-  const imageUrl = backdropPath ? `https://image.tmdb.org/t/p/w780${backdropPath}` : null; // Use a smaller backdrop
+  const imageUrl = backdropPath ? `https://image.tmdb.org/t/p/w780${backdropPath}` : null;
 
   return (
     <div
       className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 cursor-pointer"
-      onClick={onPlay}
+      onClick={onClick} // Usa a prop onClick passada
     >
-      {/* Optional: Show backdrop behind play button */}
       {imageUrl && (
          <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30 blur-sm z-[-1]" draggable="false" />
       )}
       <img
         src={isHovering ? "https://i.ibb.co/b5GFzpMs/bot-o-de-play-central-aceso.png" : "https://i.ibb.co/8qbZwTV/bot-o-de-play-central.png"}
         alt="Assistir"
-        className="h-16 w-16 object-contain pointer-events-auto"
+        className="h-16 w-16 object-contain pointer-events-auto" // Mantém pointer-events-auto para a imagem
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
         draggable="false"
       />
+      {/* Adicionado: Remove o texto "Clique para assistir" se quiser */}
+      {/* <p className="text-sm text-zinc-400 mt-4">Clique para assistir</p> */}
     </div>
   );
 };
@@ -81,6 +82,9 @@ export default function VideoPlayer({
   const [checking, setChecking] = useState(true);
 
   const [isPlayerActive, setIsPlayerActive] = useState(false);
+  // --- ADICIONADO: Estado para contar os cliques no overlay ---
+  const [overlayClickCount, setOverlayClickCount] = useState(0);
+
   const [currentSource, setCurrentSource] = useState(sources[0]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showControls, setShowControls] = useState(true)
@@ -167,16 +171,16 @@ export default function VideoPlayer({
     setTimeout(adBlockerCheck, 100);
   }, []);
 
+  // Função para abrir o anúncio (mantida)
   const triggerAd = useCallback(() => {
     const adWindow = window.open(adUrl, "_blank");
     if (!adWindow || adWindow.closed || typeof adWindow.closed === 'undefined') {
-        return false;
+        return false; // Falha ao abrir (provavelmente bloqueador de pop-up)
     }
-    // Não pausa o vídeo aqui, pois este é o anúncio inicial. O vídeo será ativado após o clique.
-    return true;
+    return true; // Sucesso
   }, [adUrl]);
 
-  // ADICIONADO: Nova função para anúncio após o primeiro play/fullscreen
+  // ADICIONADO: Nova função para anúncio após o primeiro play/fullscreen (mantida)
   const triggerAdAndPause = useCallback(() => {
     const adWindow = window.open(adUrl, "_blank");
     const adWasSuccessful = !!adWindow && !adWindow.closed && typeof adWindow.closed === 'boolean';
@@ -190,23 +194,53 @@ export default function VideoPlayer({
     return adWasSuccessful;
   }, [adUrl]);
 
-  const handleInitialPlay = () => {
-    // Activate player UI immediately
-    setIsPlayerActive(true);
-
-    // Attempt to trigger the ad
-    const adWasSuccessful = triggerAd();
-
-    // If ad fails AND we detect sandboxing (e.g., window.open failed), show the sandbox message.
-    // Otherwise, the player is active and will try to load the video.
-    if (!adWasSuccessful && (typeof window.open === 'undefined' || !window.open)) { // Basic sandbox check
-        setIsSandboxed(true);
-        setIsPlayerActive(false); // Deactivate player if sandboxed
-        setChecking(false);
-        return; // Stop further execution if sandboxed
+  // --- NOVA FUNÇÃO: Lida com cliques no overlay inicial ---
+  const handleOverlayClick = () => {
+    // Primeiro clique
+    if (overlayClickCount === 0) {
+      console.log("Primeiro clique no overlay, abrindo anúncio 1...");
+      const ad1Success = triggerAd();
+      setOverlayClickCount(1); // Incrementa o contador
+      if (!ad1Success) {
+          console.warn("Anúncio 1 pode ter sido bloqueado.");
+          // Opcional: Mostrar uma mensagem ao usuário sobre o bloqueador
+      }
     }
-    // Note: If ad was successful OR failed without sandboxing, isPlayerActive remains true
-    // and the useEffect below will handle video loading and playback.
+    // Segundo clique
+    else if (overlayClickCount === 1) {
+      console.log("Segundo clique no overlay, abrindo anúncio 2 e iniciando player...");
+      const ad2Success = triggerAd();
+      setOverlayClickCount(2); // Incrementa novamente (para evitar reabrir anúncios)
+
+      if (!ad2Success) {
+         console.warn("Anúncio 2 pode ter sido bloqueado.");
+         // Opcional: Mostrar mensagem
+      }
+
+      // Ativa o player APÓS o segundo clique, independentemente do sucesso do anúncio 2
+      activatePlayer();
+    }
+    // Cliques subsequentes (não devem ocorrer pois o overlay some)
+    else {
+        console.log("Overlay já clicado duas vezes, ativando player (caso não tenha ativado)...");
+        if (!isPlayerActive) {
+            activatePlayer();
+        }
+    }
+  };
+
+  // --- RENOMEADO e MODIFICADO: Função para ATIVAR o player ---
+  const activatePlayer = () => {
+    console.log("Ativando o player...");
+    setIsPlayerActive(true); // Ativa a UI e começa a carregar o vídeo
+
+    // Checagem de sandbox pode permanecer aqui ou ser movida se necessário
+    if (typeof window.open === 'undefined' || !window.open) {
+        console.error("Ambiente restrito (sandbox) detectado ao tentar ativar player.");
+        setIsSandboxed(true);
+        setIsPlayerActive(false); // Desativa se estiver em sandbox
+        setChecking(false);
+    }
   };
 
   const handlePlayerAreaClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -220,64 +254,56 @@ export default function VideoPlayer({
     togglePlay();
   };
 
+  // --- MODIFICAÇÃO: Lógica do useEffect que define o 'src' do vídeo ---
+  // Este useEffect agora SÓ depende de `currentSource` e `isPlayerActive`
   useEffect(() => {
     const video = videoRef.current;
+    // NÃO executa se o player não estiver ativo (após os 2 cliques)
     if (!video || !currentSource?.url || !isPlayerActive) return;
 
-    // Keep track of time only if switching source *while* player was already active
-    const savedTime = video.currentTime > 1 && video.src !== currentSource.url ? video.currentTime : 0;
+    // ... (restante da lógica do useEffect para carregar source, restaurar tempo, etc.) ...
+     console.log(`[Player Effect] Player ATIVO. Definindo src: ${currentSource.url}.`);
+     const savedTime = video.currentTime > 1 && video.src !== currentSource.url ? video.currentTime : 0;
+     video.src = currentSource.url;
+     video.load();
 
-    console.log(`[Player Effect] Active. Setting src: ${currentSource.url}. Saved time: ${savedTime}`); // Add log
-    video.src = currentSource.url;
-    video.load(); // Explicitly load the new source
+     const handleCanPlayThrough = () => {
+       console.log("[Player Effect] Vídeo pronto para tocar.");
+       if (video && savedTime > 0 && video.currentTime < savedTime) { // Check video exists
+         console.log(`[Player Effect] Restaurando tempo para ${savedTime}`);
+         video.currentTime = savedTime;
+       }
+       // Tenta dar play automaticamente QUANDO o player for ativado
+       video?.play().catch(handleError); // A primeira interação do usuário (os 2 cliques) deve permitir o autoplay aqui
+     };
+     video.addEventListener('canplaythrough', handleCanPlayThrough, { once: true });
 
-    const handleCanPlayThrough = () => {
-      console.log("[Player Effect] Video can play through."); // Add log
-      // Restore time if needed
-      if (savedTime > 0 && video.currentTime < savedTime) {
-        console.log(`[Player Effect] Restoring time to ${savedTime}`);
-        video.currentTime = savedTime;
-      }
-      // Attempt to play if the state indicates it should be playing
-      // Note: Auto-play might be blocked initially by the browser, user interaction (like the initial click) is usually required.
-      // This play() call here handles cases like switching sources after the initial interaction.
-      video.play().catch(handleError);
-    };
-    // Use canplaythrough for better readiness indication, only once per source load
-    video.addEventListener('canplaythrough', handleCanPlayThrough, { once: true });
+     setShowNextEpisodeOverlay(false);
+     if (countdownIntervalRef.current) {
+       clearInterval(countdownIntervalRef.current);
+     }
 
-    setShowNextEpisodeOverlay(false);
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-    }
+     const thumbnailVideo = thumbnailVideoRef.current;
+     if(thumbnailVideo && currentSource.thumbnailUrl) {
+         thumbnailVideo.src = currentSource.thumbnailUrl;
+         thumbnailVideo.load();
+         thumbnailVideo.play().catch(e => console.warn("Thumbnail play failed", e));
+     }
 
-    // ADICIONADO: Lógica para o thumbnail video
-    const thumbnailVideo = thumbnailVideoRef.current;
-    if(thumbnailVideo && currentSource.thumbnailUrl) {
-        thumbnailVideo.src = currentSource.thumbnailUrl;
-        // Tenta carregar para que os metadados fiquem disponíveis
-        thumbnailVideo.load();
-        // CORREÇÃO: Tenta reproduzir o vídeo de miniatura (essencial para o seek funcionar)
-        thumbnailVideo.play().catch(e => console.warn("Thumbnail play failed", e));
-    }
-
-
-    return () => {
-      // No need to remove 'once' listener
-      if(video) {
-        video.removeAttribute('src');
-        video.load();
-      }
-      // ADICIONADO: Limpeza do thumbnail video
-      if(thumbnailVideo) {
-        // CORREÇÃO: Pausa o vídeo ao limpar
-        thumbnailVideo.pause();
-        thumbnailVideo.removeAttribute('src');
-        thumbnailVideo.load();
-      }
-    };
-  // Keep dependencies minimal: Only run when source changes or player becomes active initially.
-  }, [currentSource, isPlayerActive]);
+     return () => {
+       if(video) {
+         video.removeEventListener('canplaythrough', handleCanPlayThrough); // Limpa o listener específico
+         video.removeAttribute('src');
+         video.load();
+       }
+       if(thumbnailVideo) {
+         thumbnailVideo.pause();
+         thumbnailVideo.removeAttribute('src');
+         thumbnailVideo.load();
+       }
+     };
+   // A dependência `handleError` pode ser adicionada se o linter reclamar, mas a lógica principal depende apenas da source e ativação.
+   }, [currentSource, isPlayerActive]); // <- Apenas estas dependências!
 
 
   useEffect(() => {
@@ -627,7 +653,7 @@ export default function VideoPlayer({
         if (video) {
           video.src = source.url;
           video.load(); // Important: Tell the browser to load the new source
-          
+
           // Re-attach event listener to play after load and restore time
           video.addEventListener('canplaythrough', () => {
               if (video) {
@@ -957,10 +983,11 @@ export default function VideoPlayer({
           webkit-playsinline="true" // iOS specific attribute
         />
         {/* Clickable Area to Toggle Play/Pause */}
-        <div
+        {/* Movido para dentro do Overlay */}
+        {/* <div
             className="absolute inset-0 z-[5]" // Lower z-index than controls
             onClick={handlePlayerAreaClick}
-        />
+        /> */}
          {/* Thumbnail Video (Hidden) */}
          {currentSource.thumbnailUrl && (
           <video
@@ -1009,9 +1036,15 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Initial Play Button Overlay */}
+        {/* --- MODIFICAÇÃO: Overlay inicial agora usa handleOverlayClick --- */}
         <AnimatePresence>
-          {!isPlayerActive && !error && <PlayerOverlay onPlay={handleInitialPlay} title={title} backdropPath={backdropPath} />}
+          {!isPlayerActive && !error && (
+            <PlayerOverlay
+              onClick={handleOverlayClick} // Passa o novo handler
+              title={title}
+              backdropPath={backdropPath}
+            />
+          )}
         </AnimatePresence>
 
         {/* Continue Watching Overlay */}
