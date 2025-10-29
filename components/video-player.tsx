@@ -32,7 +32,7 @@ type VideoPlayerProps = {
   backdropPath?: string | null;
 }
 
-// --- MODIFICAÇÃO: Componente de Overlay inicial ---
+// --- Componente de Overlay inicial ---
 const PlayerOverlay = ({ onClick, title, backdropPath }: { onClick: () => void; title: string; backdropPath: string | null }) => {
   const [isHovering, setIsHovering] = useState(false);
   const imageUrl = backdropPath ? `https://image.tmdb.org/t/p/w780${backdropPath}` : null;
@@ -53,7 +53,6 @@ const PlayerOverlay = ({ onClick, title, backdropPath }: { onClick: () => void; 
         onMouseLeave={() => setIsHovering(false)}
         draggable="false"
       />
-      {/* Adicionado: Remove o texto "Clique para assistir" se quiser */}
       {/* <p className="text-sm text-zinc-400 mt-4">Clique para assistir</p> */}
     </div>
   );
@@ -78,12 +77,13 @@ export default function VideoPlayer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [isSandboxed, setIsSandboxed] = useState(false);
-  const [adBlockerDetected, setAdBlockerDetected] = useState(false);
+  // REMOVIDO: Detecção de Ad Blocker e seus estados
+  // const [adBlockerDetected, setAdBlockerDetected] = useState(false);
   const [checking, setChecking] = useState(true);
 
   const [isPlayerActive, setIsPlayerActive] = useState(false);
-  // --- ADICIONADO: Estado para contar os cliques no overlay ---
-  const [overlayClickCount, setOverlayClickCount] = useState(0);
+  // REMOVIDO: Estado de contagem de cliques no overlay
+  // const [overlayClickCount, setOverlayClickCount] = useState(0);
 
   const [currentSource, setCurrentSource] = useState(sources[0]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -134,99 +134,32 @@ export default function VideoPlayer({
   const isSpeedingUpRef = useRef(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const adUrl = "https://otieu.com/4/10070814";
-  const adInterval = 2 * 60 * 1000; // 2 minutos
-  // MANTIDO o rastreamento do último anúncio para o Fullscreen/Exit Fullscreen
-  const lastAdTimeRef = useRef<number | null>(null);
-  // ADICIONADO: Variável para rastrear o ad do fullscreen
-  const lastFullscreenAdTimeRef = useRef<number | null>(null);
+  // REMOVIDO: Variáveis de anúncio
+  // const adUrl = "https://otieu.com/4/10070814";
+  // const adInterval = 2 * 60 * 1000; // 2 minutos
+  // const lastAdTimeRef = useRef<number | null>(null);
+  // const lastFullscreenAdTimeRef = useRef<number | null>(null);
 
-
+  // --- REMOVIDO: Lógica de detecção de AdBlocker ---
   useEffect(() => {
-    if (typeof window === 'undefined') {
-        setChecking(false);
-        return;
-    }
-
-    const adBlockerCheck = () => {
-        const bait = document.createElement('div');
-        bait.innerHTML = '&nbsp;';
-        bait.className = 'pub_300x250 pub_300x250m pub_728x90 text-ad text-ads text-ad-text ad-text ad-banner';
-        bait.setAttribute('aria-hidden', 'true');
-        bait.style.position = 'absolute';
-        bait.style.top = '-9999px';
-        bait.style.left = '-9999px';
-        bait.style.width = '1px';
-        bait.style.height = '1px';
-        document.body.appendChild(bait);
-
-        requestAnimationFrame(() => {
-            if (bait.offsetHeight === 0 || window.getComputedStyle(bait).display === 'none' || window.getComputedStyle(bait).visibility === 'hidden') {
-                setAdBlockerDetected(true);
-            }
-            document.body.removeChild(bait);
-            setChecking(false);
-        });
-    };
-    setTimeout(adBlockerCheck, 100);
+    // Apenas verifica se o ambiente é válido (não faz mais detecção de ad blocker)
+    setChecking(false); 
   }, []);
 
-  // Função para abrir o anúncio (mantida)
-  const triggerAd = useCallback(() => {
-    const adWindow = window.open(adUrl, "_blank");
-    if (!adWindow || adWindow.closed || typeof adWindow.closed === 'undefined') {
-        return false; // Falha ao abrir (provavelmente bloqueador de pop-up)
-    }
-    return true; // Sucesso
-  }, [adUrl]);
+  // --- REMOVIDO: Funções de trigger de anúncio ---
+  /*
+  const triggerAd = useCallback(() => { ... }, [adUrl]);
+  const triggerAdAndPause = useCallback(() => { ... }, [adUrl]);
+  */
 
-  // ADICIONADO: Nova função para anúncio após o primeiro play/fullscreen (mantida)
-  const triggerAdAndPause = useCallback(() => {
-    const adWindow = window.open(adUrl, "_blank");
-    const adWasSuccessful = !!adWindow && !adWindow.closed && typeof adWindow.closed === 'boolean';
-
-    if (adWasSuccessful) {
-        lastFullscreenAdTimeRef.current = Date.now();
-        if (videoRef.current && !videoRef.current.paused) {
-            videoRef.current.pause();
-        }
-    }
-    return adWasSuccessful;
-  }, [adUrl]);
-
-  // --- NOVA FUNÇÃO: Lida com cliques no overlay inicial ---
+  // --- FUNÇÃO MODIFICADA: Lida com cliques no overlay inicial (Anúncios ANULADOS) ---
   const handleOverlayClick = () => {
-    // Primeiro clique
-    if (overlayClickCount === 0) {
-      console.log("Primeiro clique no overlay, abrindo anúncio 1...");
-      const ad1Success = triggerAd();
-      setOverlayClickCount(1); // Incrementa o contador
-      if (!ad1Success) {
-          console.warn("Anúncio 1 pode ter sido bloqueado.");
-          // Opcional: Mostrar uma mensagem ao usuário sobre o bloqueador
-      }
-    }
-    // Segundo clique
-    else if (overlayClickCount === 1) {
-      console.log("Segundo clique no overlay, abrindo anúncio 2 e iniciando player...");
-      const ad2Success = triggerAd();
-      setOverlayClickCount(2); // Incrementa novamente (para evitar reabrir anúncios)
-
-      if (!ad2Success) {
-         console.warn("Anúncio 2 pode ter sido bloqueado.");
-         // Opcional: Mostrar mensagem
-      }
-
-      // Ativa o player APÓS o segundo clique, independentemente do sucesso do anúncio 2
+    // Ativa o player imediatamente no primeiro clique.
+    if (!isPlayerActive) {
+      console.log("Ativação imediata do player (anúncios anulados).");
       activatePlayer();
     }
-    // Cliques subsequentes (não devem ocorrer pois o overlay some)
-    else {
-        console.log("Overlay já clicado duas vezes, ativando player (caso não tenha ativado)...");
-        if (!isPlayerActive) {
-            activatePlayer();
-        }
-    }
+    // REMOVIDA toda a lógica de contagem de overlayClickCount e chamada de triggerAd.
   };
 
   // --- RENOMEADO e MODIFICADO: Função para ATIVAR o player ---
@@ -258,7 +191,7 @@ export default function VideoPlayer({
   // Este useEffect agora SÓ depende de `currentSource` e `isPlayerActive`
   useEffect(() => {
     const video = videoRef.current;
-    // NÃO executa se o player não estiver ativo (após os 2 cliques)
+    // NÃO executa se o player não estiver ativo (após os cliques)
     if (!video || !currentSource?.url || !isPlayerActive) return;
 
     // ... (restante da lógica do useEffect para carregar source, restaurar tempo, etc.) ...
@@ -274,7 +207,7 @@ export default function VideoPlayer({
          video.currentTime = savedTime;
        }
        // Tenta dar play automaticamente QUANDO o player for ativado
-       video?.play().catch(handleError); // A primeira interação do usuário (os 2 cliques) deve permitir o autoplay aqui
+       video?.play().catch(handleError); // A primeira interação do usuário (o clique) deve permitir o autoplay aqui
      };
      video.addEventListener('canplaythrough', handleCanPlayThrough, { once: true });
 
@@ -558,26 +491,15 @@ export default function VideoPlayer({
   };
 
 
+  // --- FUNÇÃO MODIFICADA: Anúncios REMOVIDOS do Fullscreen ---
   const toggleFullscreen = useCallback(async () => {
     const video = videoRef.current;
     if (!video) return;
 
     const isCurrentlyFullscreen = !!document.fullscreenElement;
 
-    if (!isCurrentlyFullscreen) {
-        // Lógica: Ao entrar em fullscreen, abre o anúncio.
-        const shouldTriggerAd = !lastFullscreenAdTimeRef.current || (Date.now() - lastFullscreenAdTimeRef.current) > adInterval;
-
-        if (shouldTriggerAd) {
-            const adWasSuccessful = triggerAdAndPause();
-            if (!adWasSuccessful) {
-                // If ad fails here, it might be due to popup blocker AFTER initial interaction.
-                // We don't necessarily set sandboxed=true, maybe just log or alert.
-                console.warn("Popup ad might have been blocked on fullscreen attempt.");
-                // Optionally show a non-blocking notification to the user
-            }
-        }
-    }
+    // TODO: [REMOVIDO ANÚNCIO] Toda a lógica de verificação e acionamento de anúncio foi removida.
+    // O player entrará ou sairá de tela cheia sem interrupção.
 
     // Ação de Fullscreen nativa do navegador
     const container = containerRef.current;
@@ -606,17 +528,15 @@ export default function VideoPlayer({
       console.error("Erro ao gerenciar fullscreen:", err);
     }
     resetControlsTimeout(); // Show controls on fullscreen toggle
-  }, [adInterval, triggerAdAndPause, resetControlsTimeout]); // Dependências
+  }, [resetControlsTimeout]); // Removidas as dependências de anúncio
 
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isCurrentlyFullscreen);
 
-      // Lógica: Ao sair do fullscreen, ativa o temporizador de anúncio se o vídeo estiver ativo
-      if (!isCurrentlyFullscreen && isPlayerActive) {
-        lastFullscreenAdTimeRef.current = Date.now();
-      }
+      // Lógica de anúncio ao sair do fullscreen foi removida daqui.
+      // if (!isCurrentlyFullscreen && isPlayerActive) { lastFullscreenAdTimeRef.current = Date.now(); }
 
       if (!isCurrentlyFullscreen) {
         try {
@@ -925,6 +845,8 @@ export default function VideoPlayer({
     );
   }
 
+  // --- REMOVIDO: Bloco de erro do AdBlocker ---
+  /*
   if (adBlockerDetected) {
     return (
        <div className="w-full h-full bg-black flex flex-col items-center justify-center text-center p-6 text-white">
@@ -934,6 +856,7 @@ export default function VideoPlayer({
       </div>
     );
   }
+  */
 
   // INÍCIO DO RETORNO PRINCIPAL
   return (
@@ -1036,7 +959,7 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* --- MODIFICAÇÃO: Overlay inicial agora usa handleOverlayClick --- */}
+        {/* --- MODIFICAÇÃO: Overlay inicial agora usa handleOverlayClick (sem anúncios) --- */}
         <AnimatePresence>
           {!isPlayerActive && !error && (
             <PlayerOverlay
